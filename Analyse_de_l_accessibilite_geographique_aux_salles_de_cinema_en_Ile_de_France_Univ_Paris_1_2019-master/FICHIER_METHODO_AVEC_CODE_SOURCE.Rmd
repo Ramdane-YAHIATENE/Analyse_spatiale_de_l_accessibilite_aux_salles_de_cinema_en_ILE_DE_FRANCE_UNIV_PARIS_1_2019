@@ -1,0 +1,3598 @@
+---
+title: <font color="#CC0000">Analyse spatiale de l'accessibilité géographique à des aménités urbaines ; le cas des salles de cinéma en Île-de-France <div align="center"></div></font>
+date: <font color="red">22/11/2019</font>
+author: <font color="red">Ramdane Yahiatene</font>
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+    gallery: true
+    highlight: tango
+---
+
+<link rel="stylesheet" type="text/css" media="all" href="css/style.css" /> 
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE} 
+knitr::opts_chunk$set(warning = FALSE)
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE} 
+#knitr::opts_chunk$set(cache=TRUE)
+              
+
+```
+
+```{r include=FALSE}
+options(osrm.server = "http://195.220.198.189/osrm/", osrm.profile = "driving")
+```
+
+
+![](C:/Users/Ridon/Desktop/Analyse accessibilité aux préfectures régionales, Ramdane YAHIATENE 2019/Billet_distance_et_temps_d_accés/page de garde.png)
+
+
+
+                                             Réalisation & encadrement     
+      
+Réalisé par : <a ahref="https://www.linkedin.com/in/ramdane-yahiatene-1105/">Ramdane YAHIATENE </a> 
+               
+                            
+Directrice académique : <a href="http://www.parisgeo .cnrs.fr/spip.phpàarticle7655&lang=fr">Clarisse DIDELON-LOISEAU (U. Paris 1 Panthéon Sorbonne)</a>
+
+Encadrante de stage : <a href="http://www.parisgeo.cnrs.fr/spip.phpàarticle17&lang=fr">Françoise BAHOKEN (U. Paris-Est / IFSTTAR, AME-SPLOTT)</a>  
+
+               
+                                         		 Présentation du stage 
+                         
+<div align="justify">
+
+Dans le but d’étudier une série d’hypothèses autour de la question de l’accessibilité. **L’INRA** (Institut National de la Recherche Agronomique) et **AgroParisTech**, en collaboration avec **l’IFSTTAR** (Institut Français des Sciences et Technologies des Transports de l’Aménagement et des Réseaux) ont proposé ce stage dans le cadre du **projet AERAU, Accessibilité des Espaces Ruraux aux Aménités Urbaines**, financé par **le ministère de la transition écologique** dans le cadre du **programme n°135 du PUCA, Plan Urbanisme Construction Architecture**.
+
+L’objectif du stage est d’explorer l’hypothèse fondée sur une théorie du ruissèlement de plus en plus controversée par un grand nombre de travaux de recherches, en analysant l’accessibilité des espaces périurbains et ruraux aux ressources urbaines. Cette analyse est censée décrire, dans un premier temps, la répartition et la manière dont les ressources sont distribuées dans le territoire, et dans un deuxième temps, mesurer l’accessibilité à des aménités en mobilisant différentes approches et indicateurs d’accessibilité. L’analyse doit être axée notamment autour de l’accessibilité effective par des réseaux routiers (et / ou ferroviaires), les méthodes d’accessibilités euclidienne étant moins performantes.
+
+</div> 
+
+                                              
+# <font color=#2ca25f> Chargement des packages </font>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(sf) 
+library(sp)
+library(dplyr)
+library(cartography)
+library(osrm)
+library(units)
+library(rgeos)
+library(reshape2)
+library(SpatialPosition)
+library(ggplot2)
+library(igraph)
+library(REAT)
+library(stringr)
+library(knitr)
+library(mapview)
+library(leaflet)
+library(stopwords)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(tidytext)
+library(tidyverse)
+library(shiny)
+library(remotes)
+
+```
+
+                                       		Mots clés - selon l'occurrence 
+                        
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+text <- readLines("DATA/Accessibilité spatiale aux ressources urbaines.txt", encoding = "UTF-8")
+
+ 
+
+# visulasition sous formes d'un nuage de mots à partior de x fréquence ----------------------
+
+
+docs <- Corpus(VectorSource(text))
+
+
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, ",")
+docs <- tm_map(docs, toSpace, "-")
+docs <- tm_map(docs, toSpace, "_")
+docs <- tm_map(docs, toSpace, "’")
+
+
+docs <- tm_map(docs, content_transformer(tolower))
+
+# Supprimer les nombres
+docs <- tm_map(docs, removeNumbers)
+# Supprimer les mots vides 
+docs <- tm_map(docs, removeWords, stopwords("french"))
+# Supprimer votre propre liste de mots non désirés
+docs <- tm_map(docs, removeWords, c("salles","salle","communes","plus", "non","entre","alors", "depuis","non","ainsi", "comme", "où")) 
+# Supprimer les ponctuations
+docs <- tm_map(docs, removePunctuation)
+# Supprimer les espaces vides supplémentaires
+docs <- tm_map(docs, stripWhitespace)
+
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d2 <- data.frame(word = names(v),freq=v)
+
+# visualisation ----------------------------
+
+set.seed(1234)
+wordcloud(words = d2$word, freq = d2$freq, min.freq = 10,
+          max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+
+
+```
+                                
+                                            			  Résumé 
+                                
+<div align="justify">
+
+Ce mémoire de stage s’inscrit dans un contexte de forte demande d’analyse cartographique de l’accessibilité à des aménités urbaines, par des réseaux de transport.
+La démarche que nous avons suivie est purement quantitative. Elle visait à répondre à cette demande d’analyse de l’accessibilité en nous basant sur différentes mesures d’éloignement ou de proximité entre les lieux de demande (des communes) et les lieux d’offres (communes équipées en ressource) à deux niveaux géographiques : celui des communes et celui des ressources en question (les localisations des ressources, ici les salles de cinéma). Plusieurs scénarios d’accessibilité ont été étudiés en fonction de la distance considérée (métrique euclidienne, voisinage, métrique réseau …) en kilomètres ou en distance / temps en minutes.
+
+</div>                 
+                                                
+                                                
+# <font color=#2ca25f> Chargement des données </font>
+
+<a href="https://www.dropbox.com/sh/13ri2blssfh1ecl/AADFwM0GS8HpQRN94fZ7DXJ6aàdl=0">**Vous pouvez les télécharger ici** </a>
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#  charger les communes de la France métropolitaine 
+
+shp_commune <-st_read(dsn="DATA/shp_communes/COMMUNE.SHP",layer = "COMMUNE")
+
+# selection spatiale de la zone d'étude 
+
+shp_com<- shp_commune[shp_commune$CODE_REG == 11,]
+
+# réseau routier principal idf 
+
+reseau_princip_idf <- st_read(dsn = "DATA/shp_rÃ©seau_routier_idf/reseau_idf.shp")
+
+# ranger selon le code insee ( ordre croissant)
+
+shp_com_arrang <-  shp_com %>% arrange(INSEE_COM)
+
+# le shp de la region d'étude - contours de la région 
+
+shp_reg_idf <- shp_com %>% group_by(CODE_REG) %>% summarise(nbre=n())
+
+#  le shp des departements 
+
+shp_dep_idf <- shp_com %>% group_by(CODE_DEPT) %>% summarise(nbre=n())
+
+# shp objets d'étude " les bibliothéques & médiathéques"
+
+shp_cine_idf <- st_read(dsn="DATA/shp_cinÃ©ma_idf/les_salles_de_cinemas_en_ile-de-france.shp")
+
+
+# mise sur la meme projection 
+
+shp_cine_idf <-  st_transform(shp_cine_idf, st_crs(shp_com_arrang))
+
+
+# nbre de cinamé par commune 
+
+shp_cine_com <- shp_cine_idf %>% group_by(code_insee,dep) %>% summarise(nbre_r=n())
+
+# population par age 
+
+struc_pop_age <- read.csv("DATA/Population/base-cc-diplomes-formation-2010.csv", sep = ";", encoding = "UTF-8")
+
+stru_pop_age_idf <- struc_pop_age %>% filter(REG==11) %>% filter(DEP!=75)
+
+colnames(stru_pop_age_idf)[colnames(stru_pop_age_idf)=="X.U.FEFF.CODGEO"] <- "code_geo"
+
+stru_pop_age_idf <- stru_pop_age_idf %>% select(REG,DEP,code_geo,P10_POP1517,P10_POP1824,P10_POP2529)
+
+stru_pop_age_idf$pop15_29 <- stru_pop_age_idf$P10_POP1517+stru_pop_age_idf$P10_POP1824 + stru_pop_age_idf$P10_POP2529
+
+
+# le cas de Paris ---------------------------------------------------------------
+
+pop_age_arrod <- read.csv("DATA/Population/par_arrondi .csv", sep=";")
+
+
+pop_age_arrod_paris <-  pop_age_arrod %>% filter(REG==11)
+
+
+colnames(pop_age_arrod_paris)[colnames(pop_age_arrod_paris)=="ï..CODGEO"] <- "code_geo"
+
+pop_age_arrod_paris <- pop_age_arrod_paris %>% select(REG,DEP,code_geo,P10_POP1517,P10_POP1824,P10_POP2529)
+
+pop_age_arrod_paris$pop15_29 <- pop_age_arrod_paris$P10_POP1517+pop_age_arrod_paris$P10_POP1824 + pop_age_arrod_paris$P10_POP2529
+
+# data fram de la structure de la population des jeunes en idf - avec désagrégation de Paris en arrondissement 
+
+pop_jeunes_idf <- rbind(pop_age_arrod_paris,stru_pop_age_idf)
+
+pop_jeunes_idf$code_geo <- as.factor(pop_jeunes_idf$code_geo)
+
+shp_com_arrang <- merge(shp_com_arrang, pop_jeunes_idf, by.x="INSEE_COM", by.y="code_geo")
+
+
+
+```
+
+# <font color=#2ca25f>Introduction</font>
+<div align="justify">
+
+Plus de la moitié de la population du monde est une population urbaine, l’attractivité des villes et l’essor de métropoles aux pouvoirs centralisés, de plus en plus renforcés, ont conduit à une urbanisation généralisée et au déclin des milieux ruraux dont les populations s’estiment marginalisées.
+Entre un monde urbain de plus en plus en essor et un monde rural de plus en plus en recul s’est alors interposé un monde mi-urbain et mi-rural appelé communément le périurbain. Le périurbain est le résultat d’un étalement urbain autour des villes rendu possible avec l’essor de l’automobile et la mise en place d’infrastructures de communication censées renforcer l’accès à la ville et aux ressources qu’elles abritent. Notons que vivre en périphérie de la ville peut être, dans le cas de certaines populations, choisi dans la mesure où ces populations s’éloignent volontairement du centre pour accéder à un meilleur cadre de vie (se rapprocher de la nature, fuir un centre de plus en plus nuisible…etc.). D’autres populations doivent s’éloigner de plus en plus de la ville et de toutes les ressources qu’elles concentrent, seulement parce qu’elles n’ont pas les moyens pour y rester. Néanmoins, quel que soit la nature ou l’origine de cet éloignement du centre, les populations concernées doivent accepter une contrainte de distance les séparant de la ville et de ses services.
+
+L’organisation de l’espace autour des centres des villes et des espaces périphériques qui gravitent autour de ceux-ci privilégient naturellement les centres, dans la mesure où, géométriquement parlant, la position centrale au sein d’une organisation spatiale est une position qui minimise l’éloignement (les distances) entre le lieu (central) et les autres lieux autour de lui. Cette situation, dans des logiques de marché, favorise l’implantation des services et activités de la ville dans les lieux centraux censés maximiser l’accès aux usagers ou bien aux clients potentiels que les opérateurs économiques, notamment privés, cherchent à attirer dans le but de maximiser leurs profits. Ce sont alors ces positions relatives de la localisation par rapport à un centre qui déterminent l’accès à ce dernier et aux ressources qu’il concentre, compte tenu de sa position centrale. Si les lieux centraux sont favorisés par leurs positions relatives par rapport aux lieux qui gravitent autour d’eux, dans la mesure où ils bénéficient d’un éloignement global minimal depuis les lieux qui les entrouvrent, ils se voient doublement avantagés dans la mesure où cette position centrale est, d’un point de vue économique, une position optimale pour attirer le plus d’usagers/clients. Cela conduit de manière naturelle à une captation et à une concentration des ressources dans les lieux centraux, ce qui suppose une offre résidentielle à la fois abondante et à proximité pour les populations habitant le centre ou les lieux les plus proches de lui. En ce sens, le rôle des acteurs publics est crucial car la position naturellement favorable du centre conduit logiquement à une distribution inégale des ressources qu’on retrouve systématiquement agglomérées dans le centre et les lieux qui lui sont les plus proches. Face à une telle situation, les acteurs publics sont censés orienter leurs politiques vers un réajustement de ces inégalités. L’action publique doit agir de manière à permettre un accès équitable à la ville et aux ressources qu’elle concentre en s’assurant que les lieux les plus défavorisés en termes d’éloignement soient les mieux reliées par les réseaux de communication (réseaux de transports). Un réseau de transport efficace est un réseau qui réajuste les positions relatives des lieux en termes de proximité ou d’éloignement par rapport aux lieux d’intérêt, dont l’accès suppose un déplacement, en maximisant les inégalités au profit des plus faibles « Principe maxi-min de la théorie de la justice de Jhon Rawls » pour garantir un accès qui soit selon le principe d’équité au sens de Jhon Rawls, juste.
+
+Dans le cadre de notre travail, nous sommes amenés à analyser l’accessibilité spatiale aux aménités urbaines. Une telle analyse exige en amont, une recherche affinée des approches et formes de mesures qui nous ont permis de positionner notre démarche et guider, ensuite, nos choix de méthodes à suivre. Nous sommes amenés d’un point de vue des résultats de l’analyse à restituer une série de cartes thématiques qui répondent à cette question de l’accessibilité spatiale aux aménités urbaines, tout en proposant une méthode d’analyse qui soit, d’un point de vue de l’analyse, reproductible et d’un point de vue des rendus cartographiques, automatisée. Nous sommes alors face à deux problématiques de travail, à la fois thématique et technique.
+
+Nos problématiques :
+
+• Quelles approches et quelles formes de mesures de l’accessibilité semblent apporter les plus pertinents résultats, pour satisfaire cette commande de l’analyse spatiale de l’accessibilité aux aménités urbaines ?
+
+• Quelles représentations cartographiques à pour quel angle d’approche et d’analyse de l’accessibilité aux aménités urbaines, semblent les plus adaptées à qu’apporte alors chaque carte et dans quelle mesure elle répond à notre sujet de départ qui est l’analyse de l’accessibilité aux aménités urbaines ?
+
+</div> 
+
+# <font color=#2ca25f> Des définitions à la méthodologie </font>
+
+<div align="justify"> 
+
+Pour rédiger les lignes qui suivent, nous nous sommes principalement appuyé sur la lecture de la thèse, récemment publiée, de Eugênia Dória Viana Cerqueira , Les inégalités d’accès aux ressources urbaines dans les franges périurbaines de Lille et Belo Horizonte (Brésil). Elle est accessible en ligne au lien suivant : HAL Id: tel-02148194 https://tel.archives-ouvertes.fr/tel-02148194 Submitted on 5 Jun 2019
+Pour la plupart des auteurs, l’accessibilité peut être définie comme la plus ou moins grande facilité avec laquelle un lieu donné peut être atteint à partir d’un ou plusieurs autres lieux (Lévy et Lussault, 2004 ; Bavoux et al., 2005).
+
+C’est dans la littérature anglo-américaine à partir de 1960 qu’on retrouve les premières définitions de l’accessibilité qui est définit comme : « la connectivité entre les lieux » (Taaffe et Gauthier, 1973), ou également par « la proximité des activités (Ingram, 1971) », en 1959 Hansen définit l’accessibilité comme « le potentiel d’opportunités pour les interactions », l’accessibilité correspond encore selon Burns (1979) à « La facilité avec laquelle les individus participent à des activités », Moseley, en 1997 a préféré de parler de possibilité que de facilité dans sa définition ; « la get-at-bleness comme la possibilité d’accéder et de participer aux activités ».
+Dans la littérature récente, la définition de l’accessibilité a évolué et s’est largement complexifiée avec l’intégration de plusieurs composantes ;
+Bavoux et al. (2005) intègrent l’usage d’un moyen de transport assurant la communication entre les lieux, ils considèrent alors que ; « l’accessibilité renvoie à la facilité avec laquelle un lieu donné peut être atteint à partir d’un autre lieu, en utilisant un moyen de transport existant »
+Bhat et al. (2000) intègrent l’intérêt des lieux (attractivité) pour d’autres lieux qui cherchent à les rejoindre. Dans ce sens, ils définissent l’accessibilité comme la « plus ou moins grande facilité avec laquelle un lieu ou une fonction économique attractive (emplois, commerces,services,) peut être atteint à partir d’un ou de plusieurs autres lieux, à l’aide de tout ou partie des moyens de transports existants ».
+
+Hansen (1959) aborde l’accessibilité avec plus de complexité en la séparant de la mobilité qu’il définit comme étant « la capacité de se déplacer d’un lieu à un autre », alors qu’il considère l’accessibilité comme « le potentiel d’interaction » entre plusieurs lieux.
+Pour chapelon (1996), l’accessibilité ne se limite pas aux possibilités de déplacements offertes aux individus mais doit aussi tenir compte des capacités de ceux-ci à utiliser les modes de transports qui permettent le déplacement vers les lieux d’intérêts « lieux désirés » , une telle définition apporte une dimension sociale aux définitions précédentes dans la mesure où elle met en avant les capacités inégales des individus à utiliser des moyens mis à leurs disposition ce qui suppose des inégalités d’accès dépendantes des caractéristiques des groupes d’individus.
+
+Pumain (2006) définit l’accessibilité comme étant la « Facilité avec laquelle un lieu peut être atteint depuis plusieurs autres », l’auteur développe que l’accessibilité est liée à « l’exercice de la centralité, et se développe généralement en rapport avec elle, grâce à l’aménagement d’infrastructures de communication »
+(Jouffe et al., 2015) viennent appuyée cette dimension sociale de l’accessibilité en mettant l’accent sur la localisation résidentielle et celle des ressources et les inégalités d’accès que celles-ci supposent. Dans ce sens, les auteurs considèrent que ; « Les inégalités d’accès sont donc une construction multidimensionnelle qui associe plusieurs facteurs comme la localisation résidentielle des ménages, la localisation des ressources elles-mêmes et les caractéristiques des individus » (Jouffe et al., 2015).
+
+
+
+## L’accessibilité comme expression de la distance :
+Les mesures d’accessibilité basées sur les distances mesurent la proximité ou l’éloignement des lieux en se focalisant sur la distance les séparant. Il existe toutefois différentes mesures et considérations de l’espacement entre les lieux. La distance peut être l’expression de métriques continues tel que les métriques euclidiennes qui résument l’éloignement entre deux lieux à l’espacement géométrique les séparant qui renvoie à la séparation spatiale. La mesure de la distance peut également être l’expression de métriques discrètes qui se focalisent sur la proximité entre les lieux en prenant en compte la notion de voisinage.  La distance peut être également temporelle et correspondre aux temps de trajets séparant les lieux. Ce « coût temporel » est appelé « coût généralisé » s’il prend en considération les composantes monétaires des déplacements. Dans sa forme topologique, la distance est évaluée à base de propriétés d’un réseau modélisé en graphe : on parle alors de distance physique pour caractériser cette forme de mesure. 
+L’accessibilité correspond alors à une fonction décroissante de la distance dont la formulation est la suivante : 
+
+
+                        Ai =X j Aij =X j f(dij)
+                          
+Où :
+
+	Aij est l'accessibilité de la zone j depuis la zone i
+	
+	f(dij) est une fonction de résistance
+	
+	dij correspond à la distance entre i et j
+
+Approcher l’accessibilité depuis cet angle ne prend en compte que la distance séparant les lieux. L’offre est alors résumée à un lieu d’intérêt. Cela suppose la non prise en compte de la masse des opportunités offertes correspondants à la somme des choix offerts au tour d’un lieu qui renvoient à l’attractivité des lieux. 
+
+## L’accessibilité et les mesures isochrones : 
+
+Une approche par isochrone mesure le nombre d’opportunités offertes dans une zone déterminée autour des lieux. La détermination des zones de dénombrement d’opportunités peut être fixée par l’application de contraintes de distances continues (500 mètres), discrètes (K=4) ou temporelles (5 minutes). La formulation de l’accessibilité correspond alors à : 
+
+                        Ai =X j Wj aj
+                          
+Où :
+
+	Ai l'accessibilité depuis la zone i
+	
+	aj les opportunités présentes dans la zone j
+	
+	Wj un paramètre : Wj=1 si cij ≤ c∗ ij, et Wj=0 sinon
+	
+	cij une mesure de coût entre les zones i et j
+	
+	c∗ ij le seuil de coût au-delà duquel les opportunités ne sont plus comptabilisées.
+	
+Approcher l’accessibilité par cette forme ne prend en compte que la mesure des opportunités offertes aux lieux se situant dans une même zone, arrêtée avec l’application d’une contrainte. Les distances séparant les lieux dans la zone déterminée sont quant à elles ignorées. 
+
+## L’accessibilité et les mesures gravitaires : 
+  
+Une approche gravitaire de l’accessibilité envisage le calcul du potentiel de ressources susceptibles d’être atteintes dans des lieux de l’offre (j) depuis des lieux de demande (i) tout en prenant en compte la distance séparant les lieux (i) et (j). Le potentiel d’accessibilité calculé sera donc, d’une part, proportionnelle au nombre d’opportunités (la masse) mesurée dans les lieux (j) dans le voisinage des lieux (i), et de l’autre part, inversement proportionnel à la distance les séparant.  
+L’accessibilité gravitaire dépend alors de la présence des ressources et du coût (distance, temps de trajet, coût généralisé) de déplacement vers celles-ci. Ces mesures découlent du modèle gravitaire issu de la loi de gravitation universelle de Newton qui stipule que « …deux corps de tailles différentes s’attirent avec une force proportionnelle à leur masse et inversement proportionnelle au carré de distance les séparant ».  
+La formulation de l’accessibilité prend alors la forme suivante : 
+
+                        Ai =X j Djf (cij)
+                        
+Où :
+
+	Ai est l'accessibilité depuis la zone i
+	
+	Dj sont les opportunités présentes dans la zone j
+	
+	f (cij) est une fonction de résistance au coût du déplacement.         
+
+## Les mesures de l’accessibilité globale : 
+
+Pour estimer l’accessibilité globale géométrique et routière des lieux nous faisons appel à l’indice d’accessibilité de Shimbel (1957) faisant varier l’accessibilité d’un lieu en fonction de la distance le séparant de tous les lieux- somme des distances vers tous les lieux - rapportée à la somme des distances séparant tous les lieux les uns des autres. 
+
+                       Ai = (∑i ∑j d(i,j))/(∑i d(i,j)
+                        
+Où :
+
+	 Ai est l'accessibilité depuis la zone i
+	 
+	 d(i,j) une mesure de distance entre i et j. 
+
+Ce sont ces quatre formes de l’approche agrégée de l’accessibilité que nous utiliserons dans notre cas d’étude pour analyser l’accessibilité spatiale aux salles de cinéma en région d’Île-de-France. Si nous avons décidé d’explorer les trois premières formes de mesures d’accessibilité, c’est parce que nous estimons qu’elles sont complémentaires dans la mesure où les limites de chacune des formes est compensé par les autres formes. Dans la première forme exprimant la séparation spatiale, seule la distance séparant les lieux est prise en compte, les opportunités en ressources sont donc ignorées. La seconde forme, quant à elle, qui correspond aux mesures isochrones, ne prend en compte que les opportunités, la distance séparant les lieux est ignorée. La troisième forme (mesures gravitaires) de sa part, tient compte à la fois des opportunités offertes (lieux de l’offre j) dans le voisinage des lieux (lieux de demande i) et la distance séparant les lieux j et i.
+
+La quatrième forme de mesure -accessibilité globale (indice de Shimbel 1957) - vise à estimer l’accessibilité des lieux dans son sens géométrique et fonctionnel dans le but de mesurer par la suite l’efficacité d’un réseau transport et son équité.
+Après que nous nous sommes positionnés d’un point de vue méthodologique, nous passons à présent à la présentation de nos analyses et des résultats obtenus que nous discuterons.
+</div>
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#  les fonctions du package "RAEAT" nous permettent de calculer des indices de concentration - d'equirepartition 
+
+REAT::gini(shp_cine_com$nbre_r)
+REAT::hoover(shp_cine_com$nbre_r)
+REAT::gini(shp_com_arrang$POPULATION)
+
+```
+
+#  <font color=#2ca25f>Analyses et discutions des résultats</font>
+<div align="justify">Face à une multitude d’indicateurs et différentes formes de mesures de l’accessibilité notre analyse constitue un mixte de plusieurs approches ou les limites de chacune sont compensés par les avantages d’une autre. Dans cette partie nous présenterons nos analyses et les résultats que nous avons obtenues tout en les discutant en présentant à la fois l’intérêt de faire appel à différentes mesures d’accessibilités et dans quelle mesure pouvons-nous les combiner. Nous reviendrons également sur la pertinence et les limites de tout ce que nous présenterons comme résultat. Toutes les cartes réalisées vont utiliser la même grille de conception des représentations graphiques présentée dans la figure 1 (ci-dessous) 
+</div>
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 1 Layout des représentations cartographiques\\label{fig:1}" }
+
+# Grille de conception cartographique 
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+plot(shp_com_arrang$geometry,col=NA, border="grey90")
+# ajouter des éléments de légencde
+legend("topleft",c("Limites des communes","limites des départements", "limites de la région","Réseau routier principal"),lty =1, col = c("grey90","#666666","black","grey"), cex = 0.6, box.lwd = 0, box.col = NA)
+
+
+plot(st_geometry(shp_dep_idf), add=T, col=NA, border="#666666")
+plot(shp_reg_idf$geometry, col=NA, border="black", add=T)
+plot(st_geometry(reseau_princip_idf), col="grey", add=T)
+
+layoutLayer(title = "Grille de conception des représentations cartographiques",
+            tabtitle = FALSE,
+            sources = "GEOFLA (IGN 2015)",
+            author = "Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+
+            frame = T,theme = "black.pal",
+            south = TRUE)
+
+```
+
+<div align="justify">Avant de nous lancer dans une quelconque analyse, nous présentons les salles de cinéma  sur la carte de la Figure 2 permettant de les localiser.
+</div>
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 2 localisation spatiale des salles de cinéma\\label{fig:2}" }
+
+#  nous commençons par localiser les objets d'etude - les salles de cinéma.
+
+# mise sur la meme projection 
+shp_cine_idf <- st_transform(shp_cine_idf, st_crs(shp_com_arrang))
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+plot(shp_com_arrang$geometry, col="grey90", border=NA)
+legend("topleft","Salle de cinéma" ,col="#2ca25f",pch=19,cex=0.8, box.lwd = 0,box.col = NA)
+
+plot(st_geometry(shp_cine_idf), add=T, pch=19, col="#2ca25f",cex=0.4)
+plot(st_geometry(shp_dep_idf), add=T, col=NA, border="grey")
+plot(shp_reg_idf$geometry, col=NA, border="black", add=T)
+
+
+layoutLayer(title = "Localisation des salles de cinéma en Ile-de-France",
+            tabtitle = FALSE,
+            sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            author = "Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+            frame = T,theme = "black.pal",
+            south = TRUE)
+
+```
+
+<a href="https://www.dropbox.com/s/b8kexjho2ywp8ma/zoom_localisation.pngàdl=0"> avec un zoom sur Paris</a>.
+ 
+
+## L’accessibilité ; de la densité de l’offre à l’espacement spatial 
+<div align="justify">En tant que géographes, nous devrions faire preuve de beaucoup de rigueur quand nous abordons la dimension spatiale de l’accessibilité aux ressources ou aménités urbaines. Nous retrouvons dans pas mal de travaux que l’analyse est réduite à la mesure de l’offre résidentielle en ressources tel que le dénombrement de ressources à différentes mailles « figure 1 ». Or, cela ne tient compte ni des échanges qui peuvent s’opérer entre les lieux, considérant chaque unité spatiale ex : les communes, un lieu inaccessible depuis les autres entités spatiale qui l’entoure. Comme si nous travaillons sur des iles isolées, inaccessibles depuis les autres lieux. L’offre en ressources ne serait alors réservée qu’aux populations de la maille sur laquelle nous travaillons. En réalité un lieu peut-être à la fois un lieu de l’offre et de demande. N’est pas pris en compte dans cette forme de mesure la distance séparant les lieux ni le réseau permettant de les relier – les rendre accessibles. 
+</div>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# ici nous voulons calcluer le nombre de salles de cinéma par commune 
+
+shp_com_data_cine <- st_drop_geometry(shp_cine_com)# supprimer la collone geometrie 
+
+
+shp_com_data_cine <- merge(shp_com_arrang,shp_com_data_cine, by.x="INSEE_COM",by.y="code_insee", all.x=T)# jointure selon le code insee de la commune et celui de la commune ou un cinéma est observé 
+
+shp_com_data_cine$nbre_r[is.na(shp_com_data_cine$nbre_r)] <-  0 # mise des Na - aucune salle de cinéma- sur 0 
+
+
+```
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 3 nombre de salles de cinéma par commune\\label{fig:3}" }
+
+# ici nous cartographions le nbre de salles de cinéma par commune 
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey") # Ajuster les marges
+
+plot(st_geometry(shp_com_arrang), col="grey90",border="grey", lwd=0.2)
+plot(st_geometry(shp_dep_idf), col=NA, border= "#666666", add= T)
+  
+
+
+# Cartographie
+propSymbolsLayer(x = shp_com_data_cine, var = "nbre_r",  # Carte en figures proportionnels 
+                 symbols = "circle", col =carto.pal(pal1 = "green.pal", n1=1, transparency = T),inches = .15,
+                 legend.pos = "bottomleft", border = "white",
+                 legend.title.txt = "Nombre de cinéma",
+                 legend.frame = F,
+                 legend.style = "c")
+
+
+layoutLayer(title = "Nombre de salle de cinéma par commune ",
+            tabtitle = FALSE,
+            frame = TRUE,theme = "black.pal",
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            south = TRUE)
+
+plot(st_geometry(shp_reg_idf), lwd = 1, col = NA, border = "black", add = TRUE)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+```
+
+
+<div align="justify">
+Nous pouvons distinguer sur la carte les communes ayant au moins une ressource si un des cercles figure dessus ; inversement, les communes ne disposant d’aucune salle de cinéma sont facilement repérables : il s’agit des communes où aucun cercle n’est observé.
+
+La taille des cercles nous renseigne sur les quantités de ressources présentes dans les communes. Cette deuxième information nous permet d’avoir une idée sur les logiques de distributions des ressources, elle nous permettrait alors d’identifier d’éventuelles zones de concentration et / ou de carence des ressources. En ce sens on voit bien sur la carte de la Figure 3 que les communes les plus équipées en salles de cinéma sont agglomérés essentiellement à paris et sa petite couronne notamment à l’ouest – les Hauts-De-Seine. Dans la grande couronne la majorité des communes dotées de salles de cinéma n’ont qu’une seule et c’est visiblement le département de la Seine-Et-Marne qui compte le plus de communes sans aucune salle de cinéma notamment dans sa partie centrale marquée, d’Ouest en Est, par un réseau important de communes sans la moindre salle de cinéma. En se basant sur la répartition des salles de cinéma par maille communale nous pouvons calculer des indices de concentration et d’équipartition des ressources (ex : indice de Gini & indice de Hoewer) mais ce qui est largement discutable avec ce type de mesures est le fait qu’ils dépendent de la maille que nous aurions choisie pour les calculer. Or ni la taille des mailles, ni leur position relative ne sont pris en compte dans le calcul. Compte tenu des grandes critiques faites à ces mesures de l’accessibilité ne s’intéressant qu’à la quantification de l’offre permettant de caractériser la répartition territoriale ou spatiale des ressources. Les travaux leur succédant se focalisent sur la distance – dans son sens de séparation spatiale – aux ressources. Il s’agit de calculer des distances abstraites approximatives « métriques continues » aux ressources (la plus poche, la plus éloignée, moyenne des distances…) dans le but de mesurer la proximité/éloignement spatial à une ressource de référence (la plus proche).
+
+Au lieu de dénombrer les points- salles de cinéma- compris dans chaque polygone – maille communale- nous pensons qu’il préférable d’opter pour une méthode de lissage spatial qui nous permet de passer des points à des surfaces représentant une estimation potentielle de la densité du nombre potentiel des salles de cinéma. Cette méthode nous semble plus pertinente que la première – nombre de salles de cinéma par commune- car elle présente le double avantage consistant à garder l’information sur la localisation des ressources et la prise en compte de l’effet de voisinage- décroissant avec la distance - tout en s’affranchissant du maillage territorial et l’effet de MAUP qu’induit sa prise en compte. Le résultat est affiché sur la carte de la figure 4 (ci-dessous). 
+
+</div>
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# cette transformation est necessaire pour utiliser par la suite  le package"SpatialPositione
+spat_r<- as_Spatial(shp_cine_idf)
+
+
+spat_r@data <- spat_r@data %>% mutate(n=1) # càd chaque salle de cinéma est mise sur 1 
+
+spat_idf <- shp_com_arrang
+
+spat_idf <- as_Spatial(spat_idf)
+
+
+
+# Application d'une grille d'un pas de 1 km à la zone d'étude 
+
+gridIdf <- CreateGrid(w = spat_idf, resolution = 1000)
+
+# ici nous calculons le  nombre potentiel de salles de cinéma dans un rayon de distance de 5 km 
+
+pot_r <- stewart(knownpts = spat_r,
+                 unknownpts = gridIdf,
+                 varname = "n",
+                 typefct = "exponential",
+                 span = 5000,
+                 beta = 2)
+
+r_data <- pot_r@data
+
+
+breaks <- c(0,seq(1,80, by=10),round(max(r_data$OUTPUT),0))
+
+
+
+rastPot_r<- rasterStewart(pot_r)
+
+
+contPot_r<- rasterToContourPoly(r = rastPot_r,
+                                mask = spat_idf,
+                                breaks = breaks)
+
+
+
+
+# à une  portée de distance de 10 km -
+
+pot_r_10<- stewart(knownpts = spat_r,
+                 unknownpts = gridIdf,
+                 varname = "n",
+                 typefct = "exponential",
+                 span = 10000,
+                 beta = 2)
+
+r_data_10 <- pot_r_10@data
+
+
+
+
+breaks_10<- c(0,1,4,seq(20,120, by=20),round(max(r_data_10$OUTPUT),0))
+
+
+
+rastPot_r_10<- rasterStewart(pot_r_10)
+
+
+contPot_r_10<- rasterToContourPoly(r = rastPot_r_10,
+                                mask = spat_idf,
+                                breaks = breaks_10)
+
+
+
+```
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 4 représentation continue de la densité du nombre potentiel de salles de cinéma à différentes portées de distance \\label{fig:4}"}
+# cartographie 
+
+# dans un voisinage spatia - théroqiue- de 5km ( distance à  vol d'oiseau)
+
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
+
+cols <- carto.pal( pal1 = 'turquoise.pal', n1 = 9)
+
+plot(shp_com_arrang$geometry)
+
+choroLayer(spdf = contPot_r,
+           df = contPot_r@data,
+           var = "center",
+           breaks = breaks,
+           border = F,
+           legend.title.cex = 0.7,
+           legend.frame = FALSE,
+           legend.pos = "topleft",
+           legend.title.txt = "Densité du nombre potentiel 
+de salles de cinéma",
+           col = cols,
+           legend.horiz =F ,
+           legend.border = F,
+           legend.values.rnd = 2,
+           add = T, 
+           colNA ="red" )
+
+layoutLayer(title = "Nombre potentiel de salles de cinéma dans un voisinage spatial de 5 km (beta=2) ",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015)" ,
+            author = "Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+plot(shp_reg_idf$geometry, add=T, col=NA)
+plot(shp_dep_idf$geometry, add=T,col=NA, border="#666666")
+
+
+# dans un voisinage théorqiue  de 10 km 
+
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
+
+cols <- carto.pal( pal1 = 'turquoise.pal', n1 = 9)
+
+plot(shp_com_arrang$geometry)
+
+choroLayer(spdf = contPot_r_10,
+           df = contPot_r_10@data,
+           var = "center",
+           breaks = breaks_10,
+           border = F,
+           legend.title.cex = 0.7,
+           legend.frame = FALSE,
+           legend.pos = "topleft",
+           legend.title.txt = "Densité du nombre potentiel 
+de salles de cinéma",
+           col = cols,
+           legend.horiz =F ,
+           legend.border = F,
+           legend.values.rnd = 2,
+           add = T, 
+           colNA ="red" )
+
+layoutLayer(title = "Nombre potentiel de salles de cinéma dans un voisinage spatial de 10 km (beta=2) ",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015)" ,
+            author = "Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+plot(shp_reg_idf$geometry, add=T, col=NA)
+plot(shp_dep_idf$geometry, add=T,col=NA, border="#666666")
+
+
+```
+
+
+<div align="justify">Le nombre potentiel de salle de cinéma est d’autant plus important que la portée (en kilomètres) considérée est importante (10 km) : à cinq kilomètres, seuls Paris et quelques communes présentent une offre de plus de 30 salles de cinéma différentes. A dix kilomètres nous notons à l’Est - dans la partie Nord du département de la Seine-Et-Marne- une concentration spatiale des lieux ne pouvant atteindre qu’une seule salle de cinéma tandis que Paris et les communs de la petite couronne peuvent atteindre entre 40 et 141 salles de cinéma différentes à égale portée de distance- espacement spatial. 
+
+En se basant sur la distance à la ressource la plus proche et la modélisation théorique, il est possible de déterminer des aires d’influences théoriques de ressources. 
+Nous avons décidé de représenter dans une même carte les distances kilométriques séparant les communes des salles de cinéma les plus proches, sous une forme choroplèthe. A cette première information, nous superposons la délimitation des zones d’influences théoriques de chacune des salles de cinéma, représentés sous la forme de polygones de Voronei (1908). .  Nous affichons le résultat dans la carte ci-dessous. 
+
+</div>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# Construction d'une matruce de distance (communes/ressources)
+
+
+shp_com_ressource <-  shp_com_arrang
+
+# exctraction des centroides ( origines )
+centr_com<- st_centroid(st_geometry(shp_com_ressource))
+
+# points localisants les ressources ( destinations )
+
+localisation_r <- st_geometry(shp_cine_idf)
+
+
+# construction d'une matrice de distance OD ( ou les o correspondent aux communes d'idf et les d correspodent aux ressources )
+dist_com_r<-  st_distance(centr_com,localisation_r )
+
+
+# conversion des diatnces en km 
+units(dist_com_r) <- with(ud_units, km)
+
+
+# identification de la ressource la plus proche 
+minDista<- apply(dist_com_r, 1, min, na.rm=T)
+
+# distance moyenne aux ressources 
+mean_dist <- apply(dist_com_r, 1,mean)
+
+# éloignement maximum ( ressource la plus loin )
+maxDista <- apply(dist_com_r,1,max,na.rm=T)
+
+
+# ajout de collonnes (eloignement_minimum/eloignement_maximal/ eloignement_moyen)  au shp de cartographie 
+
+
+shp_com_ressource$short_dist_r <- minDista
+
+shp_com_ressource$mean_dist_r <- mean_dist 
+
+shp_com_ressource$lenght_dist_r <- maxDista
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# aires d'influence des ressources   
+
+shp_r_voro <-  shp_cine_idf
+
+shp_r_voro <- st_transform(shp_r_voro, st_crs(shp_com_arrang))
+
+shp_r_geom <- st_geometry(shp_r_voro)
+
+
+
+# dàlimitation de la surface occupàe par la zone d'étude  
+union_idf<- st_union(shp_com_arrang)
+
+hull <- st_convex_hull(union_idf)
+
+union_idf_hull<- st_intersection(union_idf,hull)
+
+
+union_r<- st_union(shp_r_geom)
+
+hull2 <- st_convex_hull(union_r)
+
+# intersection de la surfacepolygonale occuppee par les salles de cinema  avec la surface de la zone d'étude 
+idf_r<- st_intersection(union_idf,union_r)
+
+# délimitation des polygones ( Aires d'influences théoriques)
+voro <- st_voronoi(idf_r)
+
+```
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,fig.cap="Figure 5 aires d'influences et aires communales des salles de cinéma \\label{fig:5}" }
+
+# Cartographie 
+
+par(mfrow=c(1,1))
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
+plot(st_geometry(shp_com_arrang),col=NA,border="grey")
+
+legend("top","Salle de cinéma       ",cex=.8,col="#2ca25f",pch=19,box.lty=0,box.col=NA)
+legend("topright",c("Aires d'influence théoriques      "),cex= .8,col="white",lty=1, box.lty = 0,box.col = NA)
+cols <- carto.pal(pal1 = "red.pal", n1 = 10) # choix d'une palette de couleur 
+
+
+choroLayer(x = shp_com_ressource , 
+           var = "short_dist_r",
+           method ="quantile",
+           nclass = 10,
+           col = cols,
+           border = NA,
+           add = TRUE,
+           legend.horiz = F,
+           legend.frame = F,
+           legend.pos = "topleft",
+           legend.border = F,
+           legend.title.txt = 
+"Distance en km ",
+           legend.values.rnd = 0)
+
+
+plot(st_intersection(st_cast(voro),union_idf_hull), col = NA,border = "white", cex = 3, add=T)
+
+plot(st_geometry(shp_reg_idf),add=T)
+
+plot(st_geometry(shp_cine_idf),col = "#2ca25f", add = T,cex = 0.3,pch = 19)
+
+layoutLayer(title = "Aires d'influence des salles de cinémas" ,
+            sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            author =" © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", 
+            tabtitle = FALSE,
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+
+```
+
+
+<div align="justify">Cette carte présente deux informations, véhiculant deux approches, qui permettent d’aborder la question d’accessibilité spatiale aux ressources. Elle représente à la fois, une délimitation des aires d’influences théoriques, des « aires de marchés théoriques », pour chacune des salles de cinémas. Et les distances séparant les communes des salles de cinémas qui leur sont les plus proches.
+
+La taille des zones d’influence délimitées en blanc sur la carte nous renseigne sur les dimensions théoriques de chaque aire d’influence et sur la manière dont les salles de cinéma se répartissent une clientèle potentielle. La taille des zones nous livre aussi des informations sur le nombre et sur la concurrence des salles de cinéma. En fait, plus la taille de la zone d’influence théorique est grande, moins la concurrence entre les lieux de l’offre, les salles de cinéma en l’occurrence, est grande. Cela veut dire aussi que plus la taille est grande, moins l’offre est présente. 
+
+La couleur est utilisée en représentation zonale choroplèthe avec la variable visuelle valeur : plus elle est claire et plus elle caractérise la proximité et inversement, plus la ressource est éloignée de la commune et plus la couleur est intense, sombre. La discrétisation choisie est en effectifs égaux : il s’agit des déciles où chaque classe correspond à 10 % des observations. Les classes sont bornées par le haut et par le bas par les valeurs maximale et minimale de la série qui correspondent respectivement à l’éloignement maximal et minimal de la ressource la plus proche. Ainsi, nous pouvons lire sur la carte, par exemple, que moins de 5 kilomètres séparent la moitié des communes d’Ile de France des salles de cinéma qui leurs sont les plus proches. Un dixième des communes les plus éloignés d’une salle de cinéma – la plus proche – se situent à plus de 14 kilomètres, jusqu’à atteindre un éloignement spatial maximum de 28 kilomètres pour le cas de la commune la plus éloignée de la salle de cinéma qui lui est théoriquement la plus proche. Les autres salles de cinéma ne peuvent être que plus éloignées dans un sens géométrique - vu que le plus proche en réalité (temps de trajet) n’est pas systématiquement le plus proche en termes de séparation spatiale (distance à vol d’oiseau). 
+
+La représentation des distances permet de localiser les communes bénéficiant d’une offre de proximité théorique (distance à vol d’oiseau) comme elle permet de localiser les communes éloignées des ressources, dans la mesure où, si une commune est éloignée de la ressource qui lui est théoriquement la plus proche elle ne peut être que plus éloignée du restant des ressources. Les distances représentées dans un maillage communal, avec la variable visuelle valeur, permettent de distinguer des aires communales caractérisées par la proximité ou l’éloignement à la ressource. 
+
+Cependant, cette carte serait largement contestable dans la mesure où la redirection des lieux de demande vers le lieu de l’offre le plus proche est une approche très simpliste et déterministe des comportements des populations cibles. L’usager ou le client potentiel ne se dirigera pas forcément vers la salle de cinéma qui lui est la plus proche. 
+On assigne une distance à chaque commune alors qu’on ne travaille que sur des centroïdes. Cela homogénéise l’information et ne prends pas en compte la différence des positions qui peuvent exister au sein d’une même commune. Le deuxième inconvénient est lié aux distances calculées, si celles-ci nous donnent certes un premier aperçu sur l’éloignement ou la proximité aux ressources, elles ne sont que des mesures abstraites à partir du moment où les humains ne se déplacent pas en volant, ni les moyens de transports sont des droites parfaites qui traversent l’espace comme si aucune barrière ne leurs barrait le parcours. 
+
+Si cette carte nous donne déjà un premier aperçu de la position relative des lieux de demande (i), ici les communes, par rapport aux lieux de l’offre (j) qui correspondent aux localisations des salles de cinémas. La démarche reste déterministe et une analyse qualitative des choix des salles de cinémas et des déplacements vers ceux-ci devrait être mise en place pour nous révéler des comportements et des logiques de déplacements beaucoup plus fine, mais aussi plus complexes à analyser.
+Dans le cas où nous cherchons à mettre en avant un réseau d’influences théoriques, nous pouvons représenter sous forme de segments, les liens entre les communes « origines » et les salles de cinémas « destinations » qui leurs sont les plus proches. Chaque sommet correspond à une salle de cinémas tandis que les arcs représentent les liens vers les communes faisant partie du réseau d’influence théorique de chaque sommet. Nous affichons la carte correspond à cela dans la carte 6 ci-dessous. 
+</div>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# recuperer l'identifiant de la ressource la plus proche de chaque commune 
+
+point_plus_proche_com <- st_nearest_feature(st_centroid(st_geometry(shp_com_arrang)),st_geometry(shp_cine_idf))
+
+
+# ajouter le resultat obtenu ci-dessus au shp 
+point_plus_proche_com <- cbind(point_plus_proche_com, shp_com_arrang)
+
+# transofrmation en tableau 
+point_plus_proche_com<- as.data.frame(point_plus_proche_com)
+
+# ajouter une colonne id 
+shp_r_com <- shp_cine_idf %>% mutate(id.1=(1: nrow(shp_cine_idf)))
+
+# transformation en tableau 
+shp_r_com <- as.data.frame(shp_r_com)
+
+# selection des deux premieres colonnes 
+shp_r_com <- shp_r_com %>% select(id.1,geometry)
+
+# renommer les colonnes 
+colnames(shp_r_com) <- c("id.1","geom.1")
+
+# extraction des centroides des communes 
+point_plus_proche_com$centr <- st_centroid(st_geometry(shp_com_arrang))
+
+# selection des colonnes qui nous interesse 
+point_plus_proche_com<-  point_plus_proche_com %>% select(point_plus_proche_com, centr)
+
+# jointure pour recuperer la geometrie des points les plus proches de chaque commune ( jusqu'ici on n'avait que leur numero de ligne dans le tableau)
+geom_point_plus_proche_com <- merge(point_plus_proche_com, shp_r_com, by.x = "point_plus_proche_com", 
+                                    by.y = "id.1")
+
+
+# transformation en tableau ( necessaire pour avoir la main sur les colonnes du tableau)
+point_plus_proche_com <- as.data.frame(geom_point_plus_proche_com)
+
+# cordonnees xy des centroides des communes ( les origines)
+XY<- st_coordinates(point_plus_proche_com$centr)
+
+# cordonnees xy de la ressource la plus proche 
+xy <- st_coordinates(point_plus_proche_com$geom.1)
+
+# transformation en tableau 
+xy<- as.data.frame(xy)
+
+#  garder que les colonnes qui nous interesse 
+xy<- xy %>% select(X,Y)
+
+# renommer pour eviter de melanger les cordonnes des origines ( les communes ) et celles des destinations ( les ressources)
+colnames(xy) <- c("x1","y1")
+
+# regrouper nos calculs dans un seul tableau 
+cord_plus_proche_com<- cbind(point_plus_proche_com,XY,xy)
+
+
+```
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,fig.cap="Figure 6 : liens du réseau communes / salles de cinéma les plus proches  \\label{fig:6}"}
+
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+plot(st_geometry(shp_com_arrang),col="grey90",border="grey")
+
+# légende 
+legend("topleft","Commune",cex=.8,col="blue",pch=19,box.lty=0,box.col=NA)
+legend("top","Salle de cinéma",pch=3,col = "black", box.lty = 0,box.col = NA, cex = .8)
+legend("topright","Lien           ",cex= .8,col="#2ca25f",lty=1, box.lty = 0,box.col = NA)
+
+# carto 
+plot(point_plus_proche_com$centr,add=T, pch=19, cex=0.2, col="blue")
+segments(cord_plus_proche_com$X,cord_plus_proche_com$Y, cord_plus_proche_com$x1,cord_plus_proche_com$y1,
+         col="#2ca25f")
+plot(point_plus_proche_com$geom.1, col="black", cex=0.4,pch=3,add=T)
+plot(st_geometry(shp_reg_idf),add=T)
+
+# layout 
+layoutLayer(title = "Réseau d'influence théorique (communes / salles de cinéma les plus proches) ",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            author =" © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", 
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+```
+
+
+<div align="justify">La carte de la figure 6 nous permet d’identifier des centralités locales « centralité de degré » déterminées par le nombre d’arrêtes incidentes vers chaque sommet – les nœuds du réseau- qui correspondent aux connexions commune/ressource la plus proche. Cela peut nous aider à repérer d’éventuelles fragilités du réseau en mettant en exergue les nœuds les plus influents. Ce type de représentations peuvent nous permettre d’observer à quoi ressemblerait le réseau si un sommet devait disparaitre (fermeture d’une salle de cinéma) ou inversement apparaitre (ouverture d’une salle de cinéma).  
+
+Il est également possible de figurer en représentation zonale les parts de populations comprises dans chacune des zones d’influence théoriques. Selon la nature et le type de la ressource que nous analysons, nous pourrions aussi juste faire figurer la part d’une catégorie de population. Par exemple, faire figurer la part des femmes en âge de procréer dans une analyse de l’accessibilité aux maternités ou la part de personnes âgées, si notre objet d’analyse était les maisons de retraites, ou encore la part des enfants en dessous d’un certain âge dans le cas où l’analyse porterait sur les crèches…etc. 
+
+L’intérêt d’une telle carte aurait été de rechercher l’adaptabilité de l’offre de proximité – le plus proche voisin - à la demande, comment l’offre répond à la demande de salles de cinémas. Dans le cas de notre étude, nous affichons dans la carte de la figure ci-dessous la part des populations communales comprises dans les aires d’influences. Quand une unité territoriale se voit appartenir à différents polygones nous divisons sa population en fonction de la surface comprise – intersectant- chaque polygone.    
+
+</div>
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# creation d'un shp des aires d'influences polygonales 
+
+shp_voro <- shp_com_arrang
+b <- st_intersection(st_cast(voro),union_idf_hull) 
+shp_voro= b %>%
+st_sf %>%
+st_cast()
+
+
+# jointure sptiale par intersection [ Polygones / communes ]
+
+geom_idf_voro <- shp_voro %>% st_intersection(shp_com_arrang) 
+
+# ajouter une colonne calculant la superficie des unités spatiales résultantes de l'intersection 
+
+geom_idf_voro <- geom_idf_voro %>% mutate(sup=st_area(st_geometry(geom_idf_voro)))
+
+
+# superficie initiale et superficie apres l'intersection 
+
+sup <- st_area(st_geometry(geom_idf_voro))
+sup <- as.character(sup) %>% as.numeric(sup)
+
+
+superfice_initiale <- st_area(st_geometry(shp_com_arrang))
+superfice_initiale <- as.character(superfice_initiale) %>% as.numeric(superfice_initiale)
+
+
+shp_com_arrang$sup_initiale <- superfice_initiale
+geom_idf_voro$sup <- sup
+
+df_com_arrang <- as.data.frame(shp_com_arrang)
+df_com_arrang <- st_drop_geometry(shp_com_arrang)
+
+
+# par tde la superficie intersectee en fonction de la superficie initiale 
+
+shp_com_voro_sup_initiale <- merge(geom_idf_voro, df_com_arrang,by.x="INSEE_COM", by.y="INSEE_COM")
+
+
+super_intiale_com <- shp_com_voro_sup_initiale$sup_initiale
+super_new_com <- shp_com_voro_sup_initiale$sup
+
+part_sup <- cbind(super_intiale_com,super_new_com)
+part_sup <- as.data.frame(part_sup)
+
+part_sup <- (part_sup$super_new_com/part_sup$super_intiale_com)*100
+
+
+
+#- nous deterlinons la population des jeunes inscluses dans les aires d'influences théorqieus en focntion de la population initiale des jeunes par commune que nous rapportons à la part de la superficie intersectée 
+
+pop_initiale <- geom_idf_voro$pop15_29
+
+pop_initiale_tot <- geom_idf_voro$POPULATION
+
+geom_idf_voro$pop_inters <- (pop_initiale*part_sup)/100
+
+
+
+# -----------------------------------------------
+idf_voro <- shp_voro %>% st_intersects(shp_com_arrang)
+
+idf_voro <- as.data.frame(idf_voro)
+
+idf_voro <- idf_voro %>% arrange(col.id)
+
+
+idf_voro$pop <- geom_idf_voro$pop_inters
+
+idf_voro$pop_tot <- geom_idf_voro$POPULATION
+
+#-------------------------------------------------
+
+voro_pop <- idf_voro %>% group_by(row.id) %>% summarise(nbre_pop=sum(pop))
+
+voro_pop_tot <- idf_voro %>% group_by(row.id) %>% summarise(nbre_pop_tot=sum(pop_tot))
+
+
+idf_voro_mat_adj <- dcast(data = idf_voro,
+                          formula = row.id ~ col.id,
+                          value.var ="pop")
+
+
+idf_voro_mat_adj <- idf_voro_mat_adj[,-1]
+
+idf_voro_mat_adj[is.na(idf_voro_mat_adj)] <- 0 
+
+pop_pot_cine <- apply(idf_voro_mat_adj,1,sum)
+
+
+#-------- ajout des calculs au shp des polygonnes - unités spatiales - pour la cartographie ------
+
+shp_voro$pop_pot <-  pop_pot_cine
+
+shp_voro$pop_totale <- voro_pop_tot$nbre_pop_tot 
+
+shp_voro$pop <- voro_pop$nbre_pop / 1000
+
+pop_tot <- sum(shp_voro$pop)
+
+shp_voro$pop_part <- (shp_voro$pop/shp_voro$pop_totale) * 100
+
+
+```
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 7 aires d’influences et population théoriques par la salle de cinéma de proximité \\label{fig:7}"}
+par(mfrow=c(1,1))
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
+plot(st_geometry(shp_voro),col=NA,border="grey")
+
+legend("top","Salle de cinéma       ",cex=.8,col="#2ca25f",pch=19,box.lty=0,box.col=NA)
+legend("topright",c("Aires d'influence théoriques      "),cex= .8,col="white",lty=1, box.lty = 0,box.col = NA)
+cols <- carto.pal(pal1 = "orange.pal", n1 = 10)# choix d'une palette de couleur 
+
+
+choroLayer(x = shp_voro , 
+           var = "pop",
+           method ="quantile",
+           nclass = 10,
+           col = cols,
+           border = "white",
+           add = TRUE,
+           legend.horiz = F,
+           legend.frame = F,
+           legend.pos = "topleft",
+           legend.border = F,
+           legend.title.txt = 
+"une salle de cinéma 
+pour (n*1000) jeunes",
+           legend.values.rnd = 0)
+
+
+plot(st_geometry(shp_reg_idf),add=T)
+
+plot(st_geometry(shp_cine_idf),col = "#2ca25f",add=T,cex=0.3,pch=19)
+
+layoutLayer(title = "Aires d'influence et population théoriques- pour une salle de cinéma" ,
+            sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            author =" © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", 
+            tabtitle = FALSE,
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+
+```
+
+
+<div align="justify"> La carte affichée dans la Figure 7 (ci-dessu) présente une délimitation- détermination – des aires d’influences théorique avec la méthode de Voronie 1908 à l’intérieur desquelles est représenté en aplat de couleur pour une salle de cinéma ; le nombre potentiel des population jeunes- de 15 à 29 ans - qui fréquenterait potentiellement chacune des salles de cinéma . La taille ou l’étendue des zones d’influence délimitées en blanc nous renseigne sur les dimensions théoriques de chacune des aires d’influence et sur la manière dont les salles de cinéma se répartissent des usagers potentiels. La taille des zones nous livre aussi des informations sur le nombre et sur la concurrence des hôpitaux. En fait, plus la taille de la zone d’influence théorique est grande, moins la présence des lieux de l’offre, les salles de cinéma en l’occurrence, est grande.
+
+Contrairement à la carte précédente où nous n’avions l’information que sur le réseau d’influence théorique de chaque salle de cinéma – représenté par les segments communes / salle de cinéma la plus proche. Cette carte permet de prendre en compte le poids de chaque unité spatiale intersectant le polygone en termes de ce qu’elles représentent en termes de population. En vrai c’est cette présente carte qui permet de caractériser la qualité de l’offre de proximité. Dans la carte précédente nous mettons en avant la centralité ou la fragilité d’un sommet « salle de cinéma » en fonction des segments incidents des communes. Or cela ne nous renseigne en aucun cas sur les flux d’une clientèle potentielle théorique. Une telle cartographie permet de visualiser la qualité de l’offre de proximité si chaque population d’une unité spatiale donnée se dirigerait vers la salle de cinéma qui lui est la plus proche. Cela suppose que toutes les populations ont la même connaissance et les mêmes conceptions de leurs environnements et opteront ainsi pour le même choix rationnel du plus proche. 
+
+Nous constatons de la carte qu’il n y’a pas forcément une relation spécifique entre la taille des aires d’influences et la population théorique incluse dans celles-ci que nous avions calculé. En fait, comme nous le voyons bien sur la carte, les aires d’influences incluant le nombre de populations « clientèle potentielle » les plus importants correspondent à la fois à des aires d’influences de petites et de grandes tailles - ce qui s’explique sans doute par une répartition inégale de la population en question. Mais moins la taille des aires d’influences est grande et plus l’offre de proximité est présente. Ce qui laisse plus de choix -alternatives- aux populations. Inversement plus la taille des aires d’influences est grande moins l’offre de proximité est importante. 
+
+
+Si nous prenons alors en compte l’information apportée par la taille – Plus la taille est grande et moins l’offre est importante – nous concluons que les salles de cinémas qui répondent le moins bien à une demande de proximité- les sommets les plus fragiles du réseau- sont celles caractérisées sur la carte xx par une taille relativement grande des aires d’influences et par les nombres de clientèle potentielle- par salle de cinéma de proximité - les plus grands. 
+
+</div>
+
+
+## Du continu au contigu : l’ordre de voisinage et le degré de séparation
+
+<div align="justify">Nous analysons maintenant une distance discrète basée sur la notion de voisinage par contigüité territoriale. Pour cela, on construit d’abord une matrice de contiguïté (Cij=1). Ensuite, on procède à la mise de la matrice à 0 ou 1. La valeur de Cij prend 1 si deux communes sont limitrophes (existence d’une seule frontière qui les sépare), sinon 0, qui signifie l’absence de frontière. Nous transformons ensuite cette matrice d’adjacence en format long.  On obtient alors une matrice de voisinage d’ordre 1, en désélectionnant les cij=0 qui correspondent à une absence de frontière. 
+
+Nous transformons notre matrice de (k=1) contiguïté en objet graph où les sommets sont les communes (centroïdes) et les liens (arrêtes) représentent les connexions entre communes limitrophes. Cela correspond en d’autres termes à un réseau de circulation entre communes limitrophes ou toutes les communes sont connectées au réseau – graph connexe. <a href="https://www.dropbox.com/s/5ezpt7uj4xnzfqc/Annexe%201%20.pngàdl=0"> voir Annexe 1</a>.
+
+Par la suite, nous calculons une matrice des plus courts chemins entre les communes en empruntant le réseau de communes limitrophes se basant sur le graphe de voisinage Nous obtenons alors une matrice de voisinage ordinal qui correspond au (k) nombre de frontières minimum (plus court chemin) à franchir d’une commune (i) vers une commune (j) dotée d’au moins une ressource. 
+
+Nous identifions ensuite la commune équipée la plus proche de chacune des communes qui correspond au nombre minimum de frontières à franchir pour rejoindre une commune équipée. Ci-dessous nous affichons la carte du calcul du voisinage spatial- territorial- relatif à (K=1) contiguïté.
+
+</div>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# construction d'une matrice de contiguïté
+
+
+fdc <- shp_com_arrang
+fdc <- as_Spatial(fdc)
+
+shp_com_data_cine[is.na(shp_com_data_cine)] <- 0
+
+shp_com_sans_r <- shp_com_data_cine%>% filter(nbre_r==0)
+
+shp_com_avec_r <- shp_com_data_cine %>% filter(nbre_r>0)
+
+
+
+# matrice de voisinage contigu 
+contig<-gIntersects(fdc,byid = TRUE, prepared=TRUE)
+
+row.names(contig)<-fdc@data$INSEE_COM
+colnames(contig)<-fdc@data$INSEE_COM
+# mise à 1 ou 0 de la matrice
+for (i in 1:nrow(contig))
+  for (j in 1:ncol(contig))
+  {if (contig[i,j]==TRUE) {contig[i,j]<-1}
+    if (contig[i,i]!=0) {contig[i,i]<-0}
+  }
+
+# transformation en matrice de format long 
+tab <-melt(contig)
+head(tab)
+
+
+# calcul de ditances euclidienne entre les communes d'idf 
+
+dist_com <- st_distance(st_centroid(st_geometry(shp_com_arrang)), st_centroid(st_geometry(shp_com_arrang)))
+
+
+# conversion en km 
+units(dist_com) <- with(ud_units, km)
+
+
+dist_com <- as.data.frame(dist_com)
+# transformation en matrice 
+dist_com <- as.matrix(dist_com)
+
+# nommer les lignes et les collones avec l'attribut "code_insee"
+row.names(dist_com) <- shp_com_arrang$INSEE_COM
+colnames(dist_com) <- shp_com_arrang$INSEE_COM
+
+# transformation en en matrice de format long 
+dist_com <- melt(dist_com)
+
+
+# ajout d'une collone de distance euclidienne à tab 
+dist_com <- as.data.frame(dist_com)
+tab$dij <- dist_com$value
+
+# renommer les collonnes 
+names(tab) = c("CODE_i", "CODE_j","cij","dij")
+head(tab)
+
+
+
+pt <- cbind(fdc@data[,"INSEE_COM"],as.data.frame(coordinates(fdc)))
+colnames(pt) <- c("CODE","X","Y")
+head(pt)
+
+
+tabflow<-tab
+tabflow = data.frame(tabflow, pt[match(tabflow[,"CODE_i"], pt[,"CODE"]),2:3])
+tabflow = data.frame(tabflow, pt[match(tabflow[,"CODE_j"], pt[,"CODE"]),2:3])
+colnames(tabflow) <- c("i","j","Cij","Dij","X1","Y1","X2","Y2")
+
+
+
+# mise à 0 ou 1 de la matrice selon à ce qu'il existe une frontiere ou pas 
+
+contig_1<-tabflow[tabflow[,"Cij"]!=0,]
+
+head(contig_1)
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# transformation en obket graph
+graph_voisinage<- graph.data.frame(contig_1)
+
+
+# caclul du plus court chemin sur le graph le poid de chaque lien correspond à la valeur  1 
+dista<- distances(graph_voisinage, v = V(graph_voisinage), to = V(graph_voisinage), mode = c("all", "out", "in"),
+                  weights = NULL, algorithm = c("automatic", "unweighted","dijkstra", "bellman-ford", "johnson"))
+
+
+# transformation en format long 
+dista <- melt(dista)
+dista <- as.data.frame(dista)
+
+
+dista <- merge(dista, shp_cine_com, by.x="Var2", by.y="code_insee")
+
+# transformation en matrice d'adjacence ( ordre de voisinage- une distance topologique)
+adjMat_territ <- dcast(data = dista,
+                       
+                      formula = Var1~Var2,
+                      value.var = "value")
+
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+nbre_front_terri_ppcomar <-  apply (adjMat_territ,1,min)
+
+# ajout du calcul au shp pour la cartovgraphie 
+
+shp_com_arrang$nbre_min_front <- nbre_front_terri_ppcomar
+
+
+```
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 8  distance topologique à la commune équipée la plus-proche \\label{fig:8}"}
+cols <- carto.pal(pal1 = "red.pal", n1 = 4)# choix d'une palette de couleur (nombre de classe =10)
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")# Ajuster les marges
+
+plot(st_geometry(shp_com), col = NA)
+
+legend("topleft",c("Commune équipée") , col= "#2ca25f",pch=19,cex=0.8, box.lty = 0, box.col = NA)
+
+
+choroLayer(x = shp_com_arrang, 
+           var = "nbre_min_front",
+           method ="quantile",
+           nclass = 4,
+           col = cols,
+           border = NA,
+           add = TRUE,
+           legend.pos = "topright",
+           legend.title.txt = "Ordre de voisinage",
+           legend.values.rnd = 0, 
+           legend.horiz = T, 
+           legend.border = F,
+           legend.frame = F)
+
+layoutLayer(title = " Distance topologique térritoriale (communes / commune équipée la plus proche) ",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015)" ,
+            author = " © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+            frame = T,
+            theme = "black.pal",
+            south = TRUE)
+plot(st_centroid( shp_com_avec_r$geometry), col="#2ca25f", add=T, border=NA, pch=19,cex=0.5)
+plot(shp_dep_idf$geometry, border="#666666", add=T)
+
+```
+
+
+<div align="justify">Nous pouvons alors lire qu’un quart des communes d’Ile-de-France sont limitrophes (k=1) aux communes dotées de ressources. Traverser une frontière suffira alors pour rejoindre une commune équipée en salles de cinéma. Un quart des communes, soit 325 communes sur un total de 1300, sont à plus de 3 jusqu’à 8 frontières des communes équipées qui leur sont les plus proches. La distance calculée ici n’est plus une métrique nous lui avons donné un sens topologique qui « établit le degré de séparation entre deux sommets du graphe à partir d’une matrice de connexité » (Pumain, 2009) indiquant dans notre cas d’étude la connexion entre les communes limitrophes. Nous cherchons donc dans cet exemple d’application à mesurer « le degré de séparation » entre les communes – les sommets – et les communes équipées « lieux d’intérêts » qui correspondent aux sommets du graph que cherchent à rejoindre les autres sommets.
+
+Pour donner un sens de métrique « métrique réseau » à ce résultat nous pouvons transformer notre graph non valué - ou chaque arrête correspond à une frontière - en un graph-valué ou chaque arrête correspond à une valeur (en kilomètres) qui n’est autre que la longueur du segment. <a href="https://www.dropbox.com/s/pyu9vpm3a7rjibo/Annexe%202.pngàdl=0">voir annexe 2</a>
+
+Cependant cette carte présente plusieurs limites. Enfaite, il nous revient au départ de déterminer l’ordre de voisinage contiguë que nous voulons explorer et ce choix est souvent difficile à justifier. C’est pourtant sur ce premier choix d’ordre de voisinage que repose le réseau théorique que nous construisons pour mesurer « le degré de séparation entre deux sommets du graph ».  Si jamais nous avions décidé de représenter la distance territoriale – dans son sens de métrique -  sur un graph valué cela revient à dire que le déplacement, sur un réseau de communes limitrophes, entre « la commune A » et « la commune D » - non limitrophes- se fait à travers des liaisons à vol d’oiseau entre communes limitrophes jusqu’à ce que la commune A rejoigne la commune D « A vers B, B vers C, C vers D». Or la configuration réelle d’un réseau reliant les lieux – réseau de transport - est beaucoup plus complexe.
+
+Néanmoins, cette analyse reste pertinente dans la mesure où elle aborde l’espace non pas comme étant continu « les métriques continues » mais comme étant discret et parsemé de frontières qui peuvent correspondre non pas aux frontières territoriales – comme c’est le cas ici - mais aussi à toutes les contraintes que l’espace peut présenter. C’est pour cela que nous avons jugé nécessaire et indispensable de tourner notre analyse vers le réel en effectuant nos mesures d’accessibilité sur un réseau de transport que nous présenterons dans les lignes qui suivent. 
+
+</div>
+
+## Des distances abstraites aux distances réelles : la métrique réseau et les temps de trajets 
+
+<div align="justify">Dans les parties précédentes nous avions calculé des métriques continues (euclidiennes) et discrètes.  A présent nous calculons des métriques réseau sur route et des temps de trajet en minutes, par voiture.
+Nous étudions dans un premier temps, les temps de trajet séparant les communes des salles de cinéma qui leurs sont les plus proches. Dans un second temps, nous abordons en se basant sur une approche isochrone, les aires communales et/ou populations communales atteignables à « x » distance temps « effort-temps » autour des salles de cinéma. 
+</div>
+
+```{r include=FALSE}
+options(osrm.server = "http://195.220.198.189/osrm/", osrm.profile = "driving")
+options(osrm.server = "http://195.220.198.189/osrm/", osrm.profile = "driving")
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# calcul d'une matrice temps de trajets" ( communes / salles de cinéma )
+plus_proche_cine <- osrmTable(src =shp_com_arrang, dst = shp_cine_idf, measure = "duration" )
+
+
+# pour ne garder que les temps de trajet ( ce qui nous interesse)
+
+plus_proche_cine <- plus_proche_cine$durations
+
+
+adjMat_idf <- as.matrix(plus_proche_cine)# transformation en matrice 
+
+# Ajout d'une colonne id au df des ressources ( salles de cinema) 
+
+shp_cine_idf <- shp_cine_idf %>% mutate(id=1:nrow(shp_cine_idf))
+
+# Nommer les lignes et les colonnes de la matrice 
+colnames(adjMat_idf) <- shp_cine_idf$id
+row.names(adjMat_idf) <- shp_com_arrang$INSEE_COM
+
+
+mat_long_idf<- melt(adjMat_idf) # transformation de la matrice en format long 
+
+
+colnames(mat_long_idf) <- c("O","D","distance temps en mn ")# Nommer les colonnes 
+
+
+
+
+# transformation en matrice d'adjacence OD
+
+adjMat_reseau <- dcast(data = mat_long_idf,
+                       formula = O~D,
+                       value.var = "distance temps en mn ") 
+
+# temps  de trajet a la ressource la plus proche 
+
+dist_temps_reseau_ppcomar <-  apply (adjMat_reseau,1,min)
+
+shp_com_arrang$dist_temps <- dist_temps_reseau_ppcomar
+
+
+# ------------------------ distances kilométriques sur réseau ----------------------------------
+
+plus_proche_cine_dist<- osrmTable(src =shp_com_arrang, dst = shp_cine_idf, measure = "distance")
+
+
+# pour ne garder que les temps de trajet ( ce qui nous interesse)
+
+plus_proche_cine_dist <- plus_proche_cine_dist$distances
+
+adjMat_idf <- as.matrix(plus_proche_cine_dist)
+
+colnames(adjMat_idf) <- shp_cine_idf$id
+row.names(adjMat_idf) <- shp_com_arrang$INSEE_COM
+
+
+
+mat_long_idf<- melt(adjMat_idf)# transformation en format long 
+
+
+mat_long_idf$value<- mat_long_idf$value/1000 # mise en km 
+
+
+# transformation en matrice d'adjacence OD
+
+adjMat_reseau <- dcast(data = mat_long_idf,
+                       formula = Var1~Var2,
+                       value.var = "value") 
+
+
+shp_com_arrang$dist_km <-  apply (adjMat_reseau,1,min)#tps de trajet à la ressource la plus-proche
+
+# nous calculons la vitesse de circulation  ( V= d/t) au km par heure 
+
+shp_com_arrang$vites_circu <- shp_com_arrang$dist_km/ (shp_com_arrang$dist_temps/60)
+
+shp_com_inf <- shp_com_arrang %>% filter(vites_circu != "Inf")
+
+
+
+```
+
+
+<div align="justify">Le modèle de Reuilly 1931 et le modèle de Huff 1962 nous permettent de déterminer des aires fonctionnelles théoriques, qui prennent à la fois compte les temps de trajets séparant les lieux « i » des lieux « j » ainsi que le nombre d’opportunités qu’offre les lieux « j », qui ensemble déterminent l’attraction de « j » sur « i ». L’aire fonctionnelle de chacun des lieux de demande « i » est déterminée par l’attraction maximale exercée par les lieux de l’offre « j ». Le modèle de Huff 1962 est moins déterministe que le modèle de reuilly dans la mesure où il repose sur des probabilités qu’un lieu « i » fréquenterait des lieux « j ». L’aire d’influence est alors estimée pour chacun des lieux « i » grâce à la probabilité maximale- attraction relative- qu’un lieu « i » fréquente un lieu « j ». 
+ 
+</div>
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+adjMat_idf <- as.matrix(plus_proche_cine)
+
+# Ajout d'une colonne id au df des ressources ( salles de cinéma biologiques)
+shp_cine_idf <- shp_cine_idf %>% mutate(id=1:nrow(shp_cine_idf))
+
+# Nommer les lignes et les colonnes de la matrice 
+colnames(adjMat_idf) <- shp_cine_idf$id
+row.names(adjMat_idf) <- shp_com_arrang$INSEE_COM
+
+
+# transformation de la matrice en format long 
+mat_long_idf<- melt(adjMat_idf)
+
+
+# Nomemr les colonnes 
+colnames(mat_long_idf) <- c("O","D","distance temps en mn ")
+
+# ajouter des collones 
+
+cine_idf_infos <- shp_cine_idf %>% select(id, fauteuils,nombre_de_f.1 )
+
+mat_long_idf <-  merge(mat_long_idf, cine_idf_infos, by.x="D", by.y="id")
+
+# calculer l'attraction en foncion d'une variable d'attractivite et du carre de la distance separant les lieux ( lieux de l'offre / lieux de demande)
+
+mat_long_idf <- mat_long_idf %>% mutate(Aij= nombre_de_f.1/(`distance temps en mn `)^2)
+
+#  transformation en matrice d'adjacence 
+
+a_ij <- acast(mat_long_idf,O~D,value.var = "Aij")
+
+# determiner l'attraction maximale 
+
+id_a_ij_max <- apply(a_ij, 1, which.max)
+
+shp_com_arrang$id_max_Aij <- colnames(a_ij)[id_a_ij_max]
+
+shp_com_arrang$a_ij_max <- apply(a_ij, 1, max)
+
+
+# calculons le nombre de jeunes de 15 à 29 ans inclus dans les aires d'attraction determinees 
+
+shp_com_arrang$pop15_29 <- shp_com_arrang$pop15_29 /1000
+  
+  
+pop_theo_2 <- shp_com_arrang %>% group_by(id_max_Aij) %>% summarise(pop_theo2=sum(pop15_29))
+
+  
+```
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 9  aires d'influence théorique determinées à base de l'attraction maximale \\label{fig:9}"}
+
+# cartographie des aires d'influence théoriques - attraction maximale - mod de Reuilly 1931 
+
+# Cartographie
+par(mfrow=c(1,1))
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
+plot(st_geometry(pop_theo_2),col=NA,border="black")
+
+legend("top","Salle de cinéma       ",cex=.8,col="#2ca25f",pch=19,box.lty=0,box.col=NA)
+legend("topright",c("Aires d'influence théoriques      "),cex= .8,col="white",lty=1, box.lty = 0,box.col = NA)
+cols <- carto.pal(pal1 = "orange.pal", n1 = 10)# choix d'une palette de couleur 
+
+
+choroLayer(x = pop_theo_2 , 
+           var = "pop_theo2",
+           method ="quantile",
+           nclass = 10,
+           col = cols,
+           border = "white",
+           add = TRUE,
+           legend.horiz = F,
+           legend.frame = F,
+           legend.pos = "topleft",
+           legend.border = F,
+           legend.title.txt = 
+"une salle de cinéma 
+pour (n*1000) jeunes",
+           legend.values.rnd = 0)
+
+
+plot(st_geometry(shp_reg_idf),add=T)
+
+
+plot(st_geometry(shp_cine_idf),col = "#2ca25f",add=T,cex=0.3,pch=19)
+
+layoutLayer(title = "Aires d'influence et population théorique" ,
+            sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            author =" © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", 
+            tabtitle = FALSE,
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+```
+
+<div align="justify">En se basant sur la méthode proposée par le modèle de Reuilly 1931 – attraction maximale - La carte affichée dans la  Figure 9 ( ci-dessus) représente les aires fonctionnelles théorique de chacune des salles de cinéma en faisant figurer en représentation zonale les parts potentielles des jeunes- de 15 à 29 ans- incluses dans chacune des zones déterminées – aires fonctionnelles.  Le résultat est moins théorique que le précédent - basé sur le modèle du « plus-proche voisin » - car il tient à la fois compte de l’attractivité des lieux (j) se traduisant par la masse d’opportunités qu’ils offrent et de la distance fonctionnelle séparant les lieux (i) des lieux (j). Cela veut dire que la mesure dépend également d’un réseau pouvant « potentiel » relier les lieux « i » aux lieux « j ». Cependant le scénario de circulation est optimal et donc peu réaliste en raison de la non-prise en compte de la congestion du réseau – circulation à la vitesse maximale - qui aurait été variablement réduite, selon la typologie des routes (capacité, fréquentation, vocation…etc) formant les tronçons du réseau.
+</div>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# connexion à un serveur distant 
+#options(osrm.server = "http://adresse_du_serveur/osrm/", osrm.profile = "driving")
+
+shp_com_arrang$plus_proche_cine <- colnames(plus_proche_cine)[apply(plus_proche_cine, 1, which.min)]
+
+# suppression la colonne "geometry"
+shp_com_df <- st_drop_geometry(shp_com_arrang)
+
+# jointure 
+shp_com_cine <- merge(shp_cine_idf, shp_com_df, by.x="id", by="plus_proche_cine")
+
+#  identification du cinéma le plus proche de chaque commune 
+shp_com_arrang$plus_proche <- apply(plus_proche_cine, 1, min) 
+
+# ràcupàration des troncons routiers correspondtas aux chemins les plus courts vers les salles de cinema les plus proches 
+
+plus_courts_chemins <- list()
+for (i in seq_len(nrow(shp_com_arrang))){
+  plus_courts_chemins[[i]] <- osrmRoute(shp_com_arrang[i,], shp_cine_idf[shp_cine_idf$id==shp_com_arrang$plus_proche_cine[i],], returnclass = "sf")
+}
+troncons_routiers<- do.call(rbind,plus_courts_chemins)
+
+
+```
+
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 10.1 temps d'accès par voiture à la salle de cinéma la plus-proche  \\label{fig:10.1}"}
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+cols <- carto.pal(pal1 = "sand.pal", n1 = 10) # choix d'une palette de couleur 
+
+plot(st_geometry(shp_com_arrang), border = "grey50", col="grey95")
+
+# Ajouter les élements de légende 
+
+legend("topright"," Tronçon routier        ", col="white",lty=1,cex=0.8,box.lty = 0,box.col = NA)
+
+legend("top", "  Salle de cinéma", col ="#2ca25f",cex = .8,pch = 19,box.col = NA, box.lty = 0 )
+
+# temps de trajet 
+
+choroLayer(x = shp_com_arrang, 
+           var="plus_proche", 
+           method = "quantile", 
+           nclass = 10,
+           col = cols,
+           border = NA, 
+           legend.frame=FALSE,
+           legend.pos = "topleft",
+           legend.horiz = F,
+           legend.border = F,
+           legend.title.txt = "Temps d'accés 
+en (min) ",add=TRUE)
+
+# layput 
+layoutLayer(title = "Temps d'accés à la salle de cinéma la plus-proche",
+            tabtitle = FALSE,
+            sources = "http://data.iledefrance.fr ,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright",
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+plot(shp_dep_idf$geometry, add=T, border="#666666", col=NA)
+plot(shp_reg_idf$geometry, add=T)
+plot(troncons_routiers$geometry, add=T, col="white", cex=0.5,border="black")
+plot(shp_cine_idf$geometry, add=T, col="#2ca25f", pch=19, cex=0.5)
+
+
+mtext(" © Ramdane YAHIATENE, Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+
+```
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 10.2  vitesse de circulation moyenne à la salle de cinéma la plus-proche  \\label{fig:10.2}"}
+# vitesse moyenne de circulation vers la salle de cinéma la plus proche 
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+cols <- carto.pal(pal1 = "sand.pal", n1 = 10) # choix d'une palette de couleur 
+
+plot(st_geometry(shp_com_arrang), border = "grey50", col="grey95")
+
+# Ajouter les élements de légende 
+
+legend("topright"," Tronçon routier        ", col="white",lty=1,cex=0.8,box.lty = 0,box.col = NA)
+
+legend("top", "  Salle de cinéma", col ="#2ca25f",cex = .8,pch = 19,box.col = NA, box.lty = 0 )
+
+# temps de trajet 
+
+choroLayer(x = shp_com_inf, 
+           var="vites_circu", 
+           method = "quantile", 
+           nclass = 10,
+           col = cols,
+           border = NA, 
+           legend.frame=FALSE,
+           legend.pos = "topleft",
+           legend.horiz = F,
+           legend.border = F,
+           legend.title.txt = "Vitesse de circulation 
+moyenne au (km/h)",
+           add=TRUE)
+
+# layput 
+layoutLayer(title = "Vitesse de circulation moyenne ( km/h) à la salle de cinéma la plus-proche",
+            tabtitle = FALSE,
+            sources = "OpendataIDF ,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright",
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+plot(shp_dep_idf$geometry, add=T, border="#666666", col=NA)
+plot(shp_reg_idf$geometry, add=T)
+plot(troncons_routiers$geometry, add=T, col="white", cex=0.5,border="black")
+plot(shp_cine_idf$geometry, add=T, col="#2ca25f", pch=19, cex=0.5)
+
+
+mtext(" © Ramdane YAHIATENE, Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+```
+
+<div align="justify">La carte affichée dans la figure 10.1 représente deux informations ; les tronçons de chemins les plus courts par route en voiture à la salle de cinéma la plus proche depuis chacune des communes de la région d’Ile de France. Représentés sous forme de tronçons routiers, ces liens sont dirigés vers le sommet « le cinéma » qui leur est le plus proche. La longueur du tronçon nous renseigne sur la longueur réelle du chemin à parcourir. En représentation zonale, la carte représente les mailles communales en choroplèthe du temps de trajet. Cette deuxième information n’est pas seulement complémentaire à la première : elle apporte de vraies nuances dans la mesure où la longueur du tronçon n’est pas forcément corrélée à la longueur en termes de temps de trajet. Cela s’explique par le fait que le réseau routier sur lequel on circule n’est pas homogène, on ne se déplace partout avec la même vitesse comme nous pouvons bien le constater sur la carte de figure (10.2)- ci-dessus- qui représente la vitesse moyenne de circulation (km/h).  
+
+En ce sens, nous pouvons observer sur la carte affichée dans la figure 10.1-ci-dessus- que 50 % (la moitié) des communes d’Ile de France se situent à moins de 10 minutes par route en voiture des salles de cinéma qui leurs sont les plus proches. 80 % des communes se positionnent à moins de 16 minutes de trajet par la route en voiture des cinémas les moins éloignés. 10% des communes les plus proches de salles de cinéma biologiques peuvent atteindre ces derniers en moins de 3 minutes, tandis que 10 % des communes les plus éloignées peuvent atteindre ces derniers entre 21 minutes et près de 44 minutes, soit 1 minute de moins, de trois quarts d’heure de trajet par route en voiture.
+Il est également possible de faire varier la couleur des tronçons (montée en valeur) selon le temps de trajet comme le représente la carte ci-dessous. 
+ 
+
+</div>
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# filtrer les tronàons routiers et les communes en focntion des temps de trajets les sàparants des ressources 
+
+# 5 minutes 
+route_5minutes <- troncons_routiers %>% filter(duration<5)
+
+com_5min <-  shp_com_arrang %>% filter(plus_proche<5)
+
+
+#10 mn
+route_10minutes <- troncons_routiers %>% filter(duration<10)
+
+com_10min <-  shp_com_arrang %>% filter(plus_proche<10)
+
+
+#20 mn
+route_20minutes <- troncons_routiers %>% filter(duration<20)
+
+com_20min <-  shp_com_arrang %>% filter(plus_proche<20)
+
+
+
+# 30 mn
+route_30minutes <- troncons_routiers %>% filter(duration<30)
+
+com_30min <-  shp_com_arrang %>% filter(plus_proche<30)
+
+
+#45 minutes 
+
+route_45minutes <- troncons_routiers %>% filter(duration<45)
+
+com_45min <-  shp_com_arrang %>% filter(plus_proche<45)
+
+```
+
+ 
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 11 liaisons par le plus court chemin entre les communes et les salles de cinéma les plus-proches \\label{fig:8}"}
+
+col = carto.pal("red.pal", 5)
+col <- as.data.frame(col)
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="black")
+
+plot(st_geometry(shp_reg_idf), col="black", border="white")
+
+legend("topleft", legend = c("[30 ; 45[","[20 ; 30[","[10 ; 20[","[5 ; 10[","[0 ; 5["), lty = 1, col = c("#7C000C","#DA0001", "#EC4E49", "#F4988D", "#FCDACA"), title = 
+"Trajet (en mn)",box.col = NA, cex=0.7, text.col = "white")
+
+plot(route_45minutes$geometry, add=T, col=as.character(col[5,]))
+plot(route_30minutes$geometry, add=T, col=as.character(col[4,]))
+plot(route_20minutes$geometry, add=T, col=as.character(col[3,]))
+plot(route_10minutes$geometry, add=T, col=as.character(col[2,]))
+plot(route_5minutes$geometry, add=T, col= as.character(col[1,]))
+
+
+
+layoutLayer(title = "Temps de trajet à la salle de cinéma la plus proche par voiture en minutes",
+            tabtitle = FALSE,
+          
+           sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015)" ,
+            frame = TRUE,
+            theme = "grey.pal",
+            south = TRUE)
+mtext(" © Ramdane YAHIATENE, Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7, col="white")
+
+mtext(text ="http://data.iledefrance.fr, GEOFLA (IGN 2015),\nc OpenStreetMap contributors. www.openstreetmap.org/copyright" , side = 1, line = -1, adj = 0.02, cex = 0.6, col = "white")
+
+```
+
+<div align="justify">
+
+Nous avons fait le choix de retenir 5 classes de temps de trajet (0; 5 minutes, 5 : 10 minutes, 10 : 20 minutes, 20 : 30 minutes, 30:  45 minutes). Une variable visuelle valeur fait varier la couleur en fonction de ces classes, où plus la couleur est claire et plus le temps de trajet est faible et inversement, plus la couleur est sombre et plus le temps de trajet est important.
+
+L’intérêt de cette carte est de repérer des zones où des communes sont bien desservies par le réseau, ce qui se traduit par des temps de trajets courts. Elle peut aussi nous renseigner sur l’efficacité du réseau routier si on arrive à repérer, par exemple, des tronçons de longueur plus au moins grands qui seraient écourtés en termes de temps, par un réseau de transport efficace.
+
+Nous cherchons à savoir dans ce qui suit, si les communes les plus peuplées sont celles qui bénéficient d’une meilleure offre de proximité – la ressource la plus proche. Pour cela nous avons décidé de visualiser la relation entre les populations communales « variable explicative – axe des X » et le temps de trajet que nous cherchons à expliquer « variable à expliquer – axe des Y ». nous affichons le résultat dans la figure 12 (ci-dessous)
+
+</div>
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 12 temps de trajet à la salle de cinéma la plus-proche par commune en fonction du nombre de population \\label{fig:12}"}
+
+shp_com_ggplot <- shp_com_arrang
+
+# renommer les collones - celles que nous representeront- cette etape n'est pas indisponsable 
+
+colnames(shp_com_ggplot)[colnames(shp_com_ggplot)=="POPULATION"] <- "Populations communales (pour mille habitant)"
+colnames(shp_com_ggplot)[colnames(shp_com_ggplot)=="dist_temps"] <-  "Temps de trajet (en minutes)"
+colnames(shp_com_ggplot)[colnames(shp_com_ggplot)=="CODE_DEPT"] <- "Code départemental"
+
+# visualisation [ Temps de trajet à la ressource la plus-proche en fonction de la population]
+
+ggplot(shp_com_ggplot) + 
+  geom_point(aes(x =`Populations communales (pour mille habitant)`, y = `Temps de trajet (en minutes)`, color = NOM_DEPT))+
+
+ggtitle("Nombre de population et temps de trajet au cinéma le plus proche par commune")
+
+
+
+```
+
+<div align="justify">
+
+Nous voyons bien du graphique que la série est dysentérique à gauche- les observations sont entassés à gauche. Cela veut dire que nous avons plus de communes relativement peu peuplées. Le graphique nous montre aussi que les communes les plus peuplés font partie des communes les plus à proximité d’une salle de cinéma. Grace à l’information de l’appartenance départementale des communes nous repérons que ces observations – les plus peuplés / les plus à proximité - correspondent essentiellement à des arrondissements parisiens. 
+
+Si l’on s’intéresse aux communes du val D’Oise que nous pouvons distinguer grâce à la caractéristique différenciatrice de la couleur. Nous constatons globalement une relative homogénéité – à l’exception de certaines communes – dans ce qu’elles représentent en termes de populations. En revanche ce constat n’est pas du tout le même en termes de proximité à une salle de cinéma qui laisse apparaitre des communes très à proximité mais aussi des communes relativement éloignées. 
+
+Pour mieux analyser l’effet d’appartenance départementale en termes de population et la proximité à une salle de cinéma nous avons décidé de les représenter sous la forme de boites-en-moustaches qui nous donnent plus de détails sur la distribution de la série.  Nous affichons le résultat dans les deux graphiques ci-dessous.
+
+</div>
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 13.1 nombre de population et temps de trajet minimal à une salle de cinéma par commune et appartenance départementale \\label{fig:13.1}"}
+
+ggplot(shp_com_ggplot, aes(x = `Code départemental`, y= `Temps de trajet (en minutes)`)) + 
+  geom_boxplot() + 
+  geom_jitter(color = "green", alpha = 0.2)+
+ggtitle("Temps de trajet, par commune et département d'appartennace, au cinéma le plus proche")
+
+
+```
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 13.2 nombre de population et temps de trajet minimal à une salle de cinéma par commune et appartenance départementale \\label{fig:13.2}"}
+
+# Population par commune et appartenance departementale 
+
+ggplot(shp_com_ggplot, aes(x =`Code départemental`, y = `Populations communales (pour mille habitant)`)) + 
+  geom_boxplot() + 
+  geom_jitter(color = "blue", alpha = 0.2)+
+ggtitle("Nombre de population par commune et département d'appartennace")
+
+
+```
+
+
+<div align="justify">
+
+En croisant la lecture des deux graphiques affichés dans les figures 13.1 & 13.2 nous pouvons conclure que le département de Paris est relativement le plus peuplé mais est également le plus hétérogène en termes de population par arrondissement (écart interquartile important). Le constat s'inverse en termes de proximité qui laisse apparaitre Paris comme étant le département le plus homogène - avec la plus faible variabilité entre arrondissements. Donc les arrondissements parisiens quel qu’en soit le nombre de leurs populations font partie des unités spatiales les plus à proximité d’une salle de cinéma (moins de 5 minutes).
+
+Ce constat est quasiment le même pour le cas du département des Hauts-de-Seine et à peu-près similaire pour les deux autres départements de la petite couronnes- la Seine-Saint-Denis et le Val-De-Marne. La situation s’inverse pour les départements de la grande couronne. Ces derniers sont homogènement les moins-peuplés mais leurs communes présentent le plus d’hétérogénéité - une forte variabilité - en termes de proximité à une salle de cinéma notamment pour le cas du département de la Seine-Et-Marne. 
+
+Le test « anova » de la variance de la proximité à une salle de cinéma en fonction du groupe d’appartenance départemental nous renvoie un (R2 = 19 %) . Cela veut dire que l’appartenance départementale des communes n’explique que 19 % de la variabilité de « Y » - la proximité à une salle de cinéma. En d’autres termes si nous connaissons l’appartenance départementale d’une commune y’a 80 % de chance que nous nous tromperions dans l’estimation de sa proximité à une salle de cinéma contre seulement 20 % de chances que nous estimions vrai. C’est une relation non négligeable mais qui reste faible.
+
+Si nous ne nous reposons que sur ce constat il nous est aussi légitime de penser qu’une partie de l’information liée à la proximité à une salle de cinéma peut être expliquée par la distance à Paris. Une analyse bivariée de la relation nous renvoie un (R2 = 37%). Cela revient à dire que 37% de la variabilité de la proximité à une salle de cinéma peut s’expliquer par la distance au centre de Paris – centroïde du 1er arrondissement. 
+
+
+</div>
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,fig.cap="Figure 14 temps de trajet minimal à une salle de cinéma  en fonction de la distance au centre de Paris \\label{fig:14}"}
+
+# DISTANCE AU CENTRE DE PARIS - CENTROIDE DU 1ER ARRONDISSEMENT --------------------------
+
+arrond_1 <- shp_com_arrang %>% filter(INSEE_COM==75101) 
+centr_1 <- st_centroid(st_geometry(arrond_1))
+
+dist_com_centr <- st_distance(st_centroid(st_geometry(shp_com_arrang)), centr_1)
+
+units(dist_com_centr) <- with(ud_units, km)
+
+
+dist_com_centr <- as.numeric(dist_com_centr)
+shp_com_arrang$dist_1arrond <- dist_com_centr
+
+# temps de trajet à la salle de cinema la plus proche en fonction de la distance à Paris ( centroide du 1er arrond..)
+
+mod_dist_1arron <-lm (formula= dist_temps ~ dist_1arrond , data = shp_com_arrang)
+
+
+# relation ( temps de trajet / vitesse de circulation)---------------------------------
+
+
+shp_com_inf <- shp_com_arrang %>% filter(vites_circu != "Inf")
+
+mod_vit_circ_tps_trjt <-lm (formula= dist_temps~ vites_circu , data = shp_com_inf)
+
+
+
+
+#  aevc l' interactions entre les distances et vitesse de circulation moyennee------------
+
+mod_vit_circ_dist_km_tps_trjt <-lm (formula= dist_temps~ dist_km + vites_circu , data = shp_com_inf)
+
+
+
+# Visualisation -----------------------------------------------------------------
+
+shp_com_ggplot <- shp_com_arrang
+
+colnames(shp_com_ggplot)[colnames(shp_com_ggplot)=="dist_temps"] <- "Temps de trajet (en minutes)"
+colnames(shp_com_ggplot)[colnames(shp_com_ggplot)=="dist_1arrond"] <- "Distance au centre de paris (en km)"
+
+ggplot(shp_com_ggplot, aes(x = `Distance au centre de paris (en km)`, y = `Temps de trajet (en minutes)`)) + 
+  geom_point(alpha = 0.2) + 
+  geom_smooth(method = "lm")+
+ggtitle("Temps de trajet à la salle de cinéma la plus proche en fonction de la distance 
+au centre de Paris - centroide du 1er arrondissement")
+
+mod_dist_1arron <-lm (formula= dist_temps~ dist_1arrond , data = shp_com_inf)
+
+
+```
+
+
+
+```{r}
+summary(mod_dist_1arron)
+```
+
+
+<div align="justify">Nous remarquons du nuage de points affiché dans la figure 14 que trois groupes d’individus – de communes- se distinguent ou se comportent de manière différente. Le premier groupe de communes correspond à des communes qui sont relativement à la fois proche de Paris et d’une salle de cinéma. Le deuxième groupe que nous distinguons correspond quant à lui à des communes relativement éloignées de Paris mais qui restent proche d’une salle de cinéma. Un troisième groupe de commune se voit à la fois éloigné de Paris et d’une salle de cinéma Nous observons bien aussi que la relation est plus importante pour les petites valeurs – les communes relativement plus proche de Paris- et décroit avec la distance. Cela s’explique par le comportement plus-au-moins homogène des communes les plus proches de Paris qui devient de plus en plus variable -hétérogène- à force qu’on s’éloigne du centre de Paris.
+
+</div>
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap=" Figure 15 temps de trajet minimal à une salle de cinéma  en fonction de la distance au centre de Paris et l'équipement en ressources par commune \\label{fig:15}"}
+#présence/ absence d'une salle de cinéma -----------------------------------------
+ 
+# transformation en numérique ( T =1, F=0) 
+ 
+shp_com_ggplot$nbre_salles_cine <- shp_com_data_cine$nbre_r
+
+shp_com_ggplot$nbre_salles_cine_1_0 <- shp_com_ggplot$nbre_salles_cine >0
+
+colnames(shp_com_ggplot)[colnames(shp_com_ggplot)=="nbre_salles_cine_1_0"] <- "Commune équipée"
+
+
+
+mod_densite_1_0_distance <- lm (formula= `Temps de trajet (en minutes)` ~ `Distance au centre de paris (en km)` :`Commune équipée` , data = shp_com_ggplot)
+ 
+
+
+ggplot(shp_com_ggplot)+
+  
+  geom_point(aes(x =`Distance au centre de paris (en km)`, y =`Temps de trajet (en minutes)`,alpha =0.2 , color= `Commune équipée`))+
+ggtitle("Temps de trajet à la salle de cinéma la plus proche en fonction de la distance 
+au centre de Paris & l'équipement en salle de cinéma, par commune")
+
+
+
+```
+
+
+```{r }
+summary(mod_densite_1_0_distance)
+
+```
+
+<div align="justify">
+Le graphique affiché dans la figure 15 nous laisse voir que les communes équipées décroissent avec la distance à Paris et deviennent de plus en plus rares à partir d’une certaine distance d’éloignement de Paris. Cela implique des distances et des temps de trajet vers une salle de cinéma relativement importants. Ainsi les communes les plus éloignées de Paris voient leur proximité à la salle de cinéma la plus proche varier en fonction de la proximité à une des communes équipées -rares par l’effet d’éloignement au centre de Paris. 
+
+Du résumé du modèle associé à la figure 13 nous lisons que si nous connaissions pour chacune des communes la distance – métrique euclidienne- la séparant du centre de Paris et le fait qu’elle soit équipée ou pas d’une salle de cinéma nous pourrions estimer à 45 % la variabilité des temps de trajets entre les communes et les salles de cinéma qui leur sont les plus proches. Cela revient à dire que la distance au centre de Paris et le fait qu’une commune soit équipée ou pas en salle de cinéma explique 45% de la variabilité de « Y » qui correspond à ce que nous cherchons à expliquer., ce qui fait que 55 % de la variabilité de « Y » reste à expliquer.   
+
+C’est de 8% que nous avions amélioré le modèle- visualisé dans la figure 14- en ajoutant une deuxième variable explicative qui correspond à l’information de l’équipement ou pas en salle de cinéma (45-37 =8). 45% étant la qualité du deuxième modèle et 37 % celle du premier ou nous n’avions pris comme variable explicative que la distance au centre de Paris ( regarder le résumé du modéle associé au modéle visulalisé dans la figure 14). 
+
+Nous lisons également du résumé du modèle associé à la figure 15 que le groupe des communes équipées se comportent différemment du groupe des communes non équipées en fonction de l’éloignement au centre de Paris. En fait, un kilomètre de plus en termes d’éloignement à Paris fait augmenter en moyenne, le temps de trajet séparant une commune d’une salle de cinéma, de 0.18 minutes - Prolongement de 11 secondes pour 1 kilomètre - alors que l’effet de la distance au centre de Paris n’a quasiment aucune influence sur le temps de trajet quand les communes sont équipées. - réduction d’environs une seconde pour un kilomètre. 
+
+Jusqu’ici nous réduisons l’accessibilité à des ressources de proximité à une mesure de la proximité immédiate- la ressource la plus proche mais qu’en-t-il de la masse de ressource à proximité ? c’est à cette question que nous cherchons à répondre dans la partie suivante.
+
+</div>
+
+## Vers des mesures isochrones de l’accessibilité ; entre coût du trajet et ressources atteignables 
+
+Nous voulons d’abord voir à quoi ressemblerait l’offre de proximité si nous augmentions d’un degré la proximité d’une salle de cinéma vers laquelle nous redirigeons nos unités spatiales- les communes. 
+
+La carte que nous affichons en <a href="https://www.dropbox.com/s/v86sp7hkpwz0uku/Annexe%203.pngàdl=0">annexe 3</a> représente le scénario visant à estimer les temps de trajets vers la deuxième salle de cinéma la plus proche depuis chacune des communes en supposant que la salle de cinéma la plus-proche de chacune des communes a été fermée. Toutes les communes sont mises devant un scénario égalant leurs situations sauf que les alternatives offertes pour chacune des communes sont différentes. Il existe des communes pour lesquelles l’offre de proximité dépend d’une seule ressource -choix unique- et la disparition « fermeture » de celle-ci implique un prolongement des temps de trajets rien que vers la deuxième ressource la plus proche considérable. A l’inverse il existe d’autres groupes de communes pour les quelles ce scénario est le moins contraignant - car si ce scénario implique forcément un prolongement des temps de parcours elles bénéficient toujours- ces communes bénéficient toujours -malgré ce changement de degré du plus proche (le deuxième plus proche) – d’une offre de proximité relativement bonne. 
+
+Pour représenter la part de communes et/ou la part de populations communales qui pourraient atteindre une salle de cinéma (ou plus), à un effort temps donné, nous les avons dénombrés et calculés les proportions qu’ils représentent nous affichons le résultat dans le tableau 1 (ci-dessous).  
+</div>
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# connexion a un serveur distannt 
+#options(osrm.server = "http://adresse_du_serveur/osrm/", osrm.profile = "driving")
+
+# calcul d'une matrice temps de trajets" ( communes / salles de cinéma )
+plus_proche <- osrmTable(src =shp_com_arrang, dst = shp_cine_idf, measure = "duration" )
+
+
+# pour ne garder que les temps de trajet ( ce qui nous interesse)
+
+plus_proche <- plus_proche$durations
+
+# transformation en matrice 
+adjMat_idf <- as.matrix(plus_proche)
+
+# Ajout d'une colonne id au df des ressources ( salles de cinéma biologiques)
+shp_data_cine <- shp_cine_idf %>% mutate(id=1:nrow(shp_cine_idf))
+
+# Nommer les lignes et les colonnes de la matrice 
+colnames(adjMat_idf) <- shp_cine_idf$id
+row.names(adjMat_idf) <- shp_com_arrang$INSEE_COM
+
+
+# transformation de la matrice en format long 
+troncons_routiers<- melt(adjMat_idf)
+
+
+# Nomemr les colonnes 
+colnames(troncons_routiers) <- c("O","D","duration")
+
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# filtrer les tronàons routiers et les communes en focntion des temps de trajets les sàparants des ressources ( la plus proche)
+
+# 5 minutes 
+route_5minutes <- troncons_routiers%>% filter(duration<5)
+
+aire_com_5minutes <- merge(shp_com_arrang,route_5minutes, by.x="INSEE_COM", by.y="O")
+
+aire_com_5minutes <- aire_com_5minutes$INSEE_COM
+
+test<- aire_com_5minutes
+doublonstest<-which(duplicated(test))
+test2<-test[-doublonstest]
+
+
+aire_com_5minutes <- as.data.frame(test2)
+colnames(aire_com_5minutes) <- "O"
+
+aire_com_5minutes <- merge(shp_com_arrang,aire_com_5minutes, by.x="INSEE_COM", by.y="O")
+
+
+
+
+#10 mn
+route_10minutes <- troncons_routiers %>% filter(duration<10)
+
+aire_com_10minutes <- merge(shp_com_arrang,route_10minutes, by.x="INSEE_COM", by.y="O")
+
+aire_com_10minutes <- aire_com_10minutes$INSEE_COM
+
+test<- aire_com_10minutes
+doublonstest<-which(duplicated(test))
+test2<-test[-doublonstest]
+
+
+aire_com_10minutes <- as.data.frame(test2)
+colnames(aire_com_10minutes) <- "O"
+
+aire_com_10minutes <- merge(shp_com_arrang,aire_com_10minutes, by.x="INSEE_COM", by.y="O")
+
+
+
+#20 mn
+route_20minutes <- troncons_routiers %>% filter(duration<20)
+
+aire_com_20minutes <- merge(shp_com_arrang,route_20minutes, by.x="INSEE_COM", by.y="O")
+
+aire_com_20minutes <- aire_com_20minutes$INSEE_COM
+
+test<- aire_com_20minutes
+doublonstest<-which(duplicated(test))
+test2<-test[-doublonstest]
+
+
+aire_com_20minutes <- as.data.frame(test2)
+colnames(aire_com_20minutes) <- "O"
+
+aire_com_20minutes <- merge(shp_com_arrang,aire_com_20minutes, by.x="INSEE_COM", by.y="O")
+
+
+
+# 30 mn
+route_30minutes <- troncons_routiers %>% filter(duration<30)
+
+aire_com_30minutes <- merge(shp_com_arrang,route_30minutes, by.x="INSEE_COM", by.y="O")
+
+aire_com_30minutes <- aire_com_30minutes$INSEE_COM
+
+test<- aire_com_30minutes
+doublonstest<-which(duplicated(test))
+test2<-test[-doublonstest]
+
+
+aire_com_30minutes <- as.data.frame(test2)
+colnames(aire_com_30minutes) <- "O"
+
+aire_com_30minutes <- merge(shp_com_arrang,aire_com_30minutes, by.x="INSEE_COM", by.y="O")
+
+
+
+#45 minutes 
+
+route_45minutes <- troncons_routiers %>% filter(duration<45)
+
+aire_com_45minutes <- merge(shp_com_arrang,route_45minutes, by.x="INSEE_COM", by.y="O")
+
+aire_com_45minutes <- aire_com_45minutes$INSEE_COM
+
+test<- aire_com_45minutes
+doublonstest<-which(duplicated(test))
+test2<-test[-doublonstest]
+
+
+aire_com_45minutes <- as.data.frame(test2)
+colnames(aire_com_45minutes) <- "O"
+
+aire_com_45minutes <- merge(shp_com_arrang,aire_com_45minutes, by.x="INSEE_COM", by.y="O")
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+col = carto.pal("red.pal", 5)
+col <- as.data.frame(col)
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+plot(st_geometry(shp_com_arrang), col="black", border=NA)
+
+plot(aire_com_20minutes$geometry,add=T,col= as.character(col[3,]) , border=F)
+plot(aire_com_10minutes$geometry,add=T,col= as.character(col[2,]) , border=F)
+plot(aire_com_5minutes$geometry,add=T,col= as.character(col[1,]) , border=F)
+
+legend("topleft", legend = c("20 min","10 min","5 min"), fill = c("#EC4E49", "#F4988D", "#FCDACA"), title = "Temps d'accés", box.col = NA, box.lty = 0)
+
+layoutLayer(title = "Aires communales atteignables à X distance temps des salles de cinéma ",
+            tabtitle = FALSE,
+           sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright",
+            frame = TRUE,
+            theme = "black.pal",
+            south = TRUE)
+mtext(" © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+plot(shp_dep_idf$geometry, add=T, border="#666666", col=NA)
+plot(shp_reg_idf$geometry, add=T)
+plot(shp_cine_idf$geometry, add=T, col="#2ca25f", pch=19, cex=0.5)
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+# nbre com à 5 minutes des ressources 
+
+nbre_com_5min <- nrow(aire_com_5minutes)
+
+# nombre de population ayant acces  à une ressource- ou plus- en moins de 5minutes de temps en voiture 
+nbre_pop_com_5min <- sum(aire_com_5minutes$POPULATION)
+
+data1 <- cbind(nbre_com_5min,nbre_pop_com_5min)
+
+
+# nbre com à 10 minutes des ressources 
+
+nbre_com_10min <- nrow(aire_com_10minutes)
+
+# nombre de population ayant acces  à une ressource- ou plus- en  moins de 10 minutes de temps en voiture 
+nbre_pop_com_10min <- sum(aire_com_10minutes$POPULATION)
+
+data2 <- cbind(nbre_com_10min,nbre_pop_com_10min)
+
+
+# nbre com à 20 minutes des ressources 
+
+nbre_com_20min <- nrow(aire_com_20minutes)
+
+# nombre de population ayant acces à une ressource à moins de 20minutes de temps en voiture 
+nbre_pop_com_20min <- sum(aire_com_20minutes$POPULATION)
+
+data3 <- cbind(nbre_com_20min,nbre_pop_com_20min)
+
+
+
+# nbre com à 30 minutes des ressources 
+
+nbre_com_30min <- nrow(aire_com_30minutes)
+
+# nombre de population ayant acces à une ressource- ou plus- en moins de 30minutes de temps en voiture 
+nbre_pop_com_30min <- sum(aire_com_30minutes$POPULATION)
+
+data4 <- cbind(nbre_com_30min,nbre_pop_com_30min)
+
+
+# nbre com à 45 minutes des ressources 
+
+nbre_com_45min <- nrow(aire_com_45minutes)
+
+# nombre de population ayant acces  à une ressource- ou plus- en moins de 45minutes de temps en voiture 
+nbre_pop_com_45min <- sum(aire_com_45minutes$POPULATION)
+
+
+data5 <- cbind(nbre_com_45min,nbre_pop_com_45min)
+
+
+
+df_gen <-  rbind(data1,data2,data3,data4, data5)
+
+rownames(df_gen) <- c("<5minutes","< 10 minutes", "< 20 minutes" , "< 30 minutes","< 45 minutes")
+colnames(df_gen) <- c("Nbre de communes ayant acces","Nbre de population ayant acces")
+
+ 
+df_gen <- as.data.frame(df_gen)
+
+
+
+nbre_tot_commune <- shp_com_arrang %>% group_by(CODE_REG) %>% summarise(nbre_tot_com=n())
+
+nbre_tot_population <- shp_com_arrang %>% group_by(CODE_REG) %>% summarise(nbre_tot_pop=sum(POPULATION))
+
+
+
+# part des communes ayant acces aux ressources a differentes distances temps de celles-ci 
+part_com_5min <- (nbre_com_5min/nbre_tot_commune$nbre_tot_com)*100
+part_com_10min <- (nbre_com_10min/nbre_tot_commune$nbre_tot_com)*100
+part_com_20min <-(nbre_com_20min/nbre_tot_commune$nbre_tot_com)*100 
+part_com_30min <- (nbre_com_30min/nbre_tot_commune$nbre_tot_com)*100
+part_com_45min <- (nbre_com_45min/nbre_tot_commune$nbre_tot_com)*100
+
+
+
+# part de la population ayant acces aux ressources à diffàretes distances temps de celles-ci 
+part_pop_5min <- (nbre_pop_com_5min/nbre_tot_population$nbre_tot_pop)*100
+part_pop_10min <- (nbre_pop_com_10min/nbre_tot_population$nbre_tot_pop)*100
+part_pop_20min <- (nbre_pop_com_20min/nbre_tot_population$nbre_tot_pop)*100
+part_pop_30min <- (nbre_pop_com_30min/nbre_tot_population$nbre_tot_pop)*100
+part_pop_45min <- (nbre_pop_com_45min/nbre_tot_population$nbre_tot_pop)*100
+
+
+
+
+data6<- cbind(part_com_5min,part_pop_5min)
+data7<- cbind(part_com_10min,part_pop_10min)
+data8 <- cbind(part_com_20min,part_pop_20min)
+data9 <- cbind(part_com_30min, part_pop_30min)
+data10 <- cbind(part_com_45min, part_pop_45min)
+
+data11 <-  rbind(data6, data7, data8, data9, data10)
+data11 <-  round(data11, 2)
+colnames(data10) <- c("part des com ayant acces en %", "part de la pop ayant acces en %")
+
+#---------------------------------df_gen2 ----------------------------
+
+df_gen <- cbind(df_gen, data11)
+
+colnames(df_gen) <- c("Nbre de communes atteignable","Nbre de population atteignable",
+                       "Part des communes (en %)", "Part de la population (en %)")
+
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+
+df2 <- data.frame(Y =rep(c("Communes", "Population"), each=5),
+                  tps_trajet =rep(c("5 minutes", "10 minutes ", "20 minutes ","30 minutes","45 minutes"),2),
+                  Part_couverte=c(df_gen$`Part des communes (en %)`,df_gen$`Part de la population (en %)`))
+
+
+
+```
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE}
+kable(df_gen, digits = 2, caption = "Tableau (1) nombres et parts de communes & populations communales pouvant atteindre une salle de cinéma ou plus à différents pas de distances")
+
+
+```
+
+<div align="justify">
+
+Pour faciliter la lecture et l’interprétation du **tableau (1)**  nous avons décidé de représenter la part des communes et de population en fonction du temps de trajet dans un graphique sous la forme de diagrammes en battons. Sur l’axe des « X » nous faisons figurer les classes de temps retenues. En « Y » les parts des communes et populations qui leurs correspondent. Nous affichons le résultat dans la figure 16 ( ci-dessous)
+
+</div>
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap=" Figure 16 part des communes et population pouvant avoir accès à une salle de cinéma à différents pas de distance-temps\\label{fig:15}"}
+
+
+
+df2_ggplot <- df2
+  
+  
+colnames(df2_ggplot)[colnames(df2_ggplot)=="tps_trajet"] <- " Classes des temps de trajets (en minutes)"
+colnames(df2_ggplot)[colnames(df2_ggplot)=="Part_couverte"] <- "Part des communes & populations (en %)"
+
+
+ggplot(data=df2_ggplot, aes(x= ` Classes des temps de trajets (en minutes)`, y=`Part des communes & populations (en %)`, fill= Y)) +
+geom_bar(stat="identity", position=position_dodge())+
+  
+geom_text(aes(label=`Part des communes & populations (en %)`), vjust=1.6, color="black",
+            position = position_dodge(0.9), size=3.5)+
+  
+scale_x_discrete("Temps de trajet ", limits = c("5 minutes", "10 minutes ", "20 minutes ","30 minutes","45 minutes"))+
+
+
+ggplot2::ggtitle("Communes et populations atteignables à x-distance temps ( en mn)")
+
+
+```
+
+<div align="justify">
+
+Nous lisons du graphique de la figure 16 (ci-dessus) que près de 20 % (deux dixième) de communes peuvent atteindre au minimum une salle de cinéma pour un effort maximal de « 5 minutes ». En termes de population cela correspond à environs trois quarts (75%). A 45 minutes d’effort- maximal ; l’ensemble de la population peut être reliée à une salle de cinéma. Nous signalons que nous ne tenons pas compte (absence de données…) des contraintes individuelles, financière ou physiques, qui auraient sans doute, prolonger les efforts temps, voir empêcher le déplacement des concernés tout court… 
+
+Cela ne nous renseigne toujours pas sur le nombre d’opportunités offertes pour chacune des communes. Nous avons décidé alors de calculer non pas le fait qu’une commune peut/ ou ne peut pas rejoindre une salle de cinéma à une portée de distance donnée autour de celle-ci mais plutôt ; mesurer le nombre de salles de cinéma pouvant être atteintes depuis les communes à un effort temps maximal retenu. Nous affichons le résultat pour un effort temps maximal de 15 minutes dans les figures (17.1 & 17.2) ci-dessous.
+
+
+</div>
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" Figure 17.1 part des communes pouvant atteindre des salles de cinéma  à un effort maximal de 15 minutes depuis les communes.\\label{fig:17.1}"}
+
+
+# ici nous calculuons le nombre de salles de cinemma pouvant etre atteintes à 20 minutes de temps de trajet en partant des lieux de demande - les communes. 
+
+
+Nbre_ress_15min <- troncons_routiers %>% filter(duration <= 15)
+
+Nbre_ress_15min <- as.data.frame(Nbre_ress_15min)
+
+df_com_arrang <- st_drop_geometry(shp_com_arrang)
+
+Nbre_ress_15min<- merge(df_com_arrang, Nbre_ress_15min, by.x="INSEE_COM", by.y="O")
+
+Nbre_ress_15min_com<- Nbre_ress_15min %>% group_by(INSEE_COM) %>% 
+                              summarise(Nbre_voisins_equipes_min=n())
+
+
+Nbre_ress_15min_com$code_dep <- str_sub(Nbre_ress_15min_com $INSEE_COM,1,2)
+
+nbre_com_dep <- df_com_arrang %>% group_by(CODE_DEPT) %>% summarise(nbrr_com_dep=n())
+
+nbre_com_dep_15min <- Nbre_ress_15min_com %>% group_by(code_dep) %>% summarise(nbrr_com_dep=n())
+
+
+part_com_dep <- round((nbre_com_dep_15min$nbrr_com_dep/nbre_com_dep$nbrr_com_dep)*100,0)
+
+nbre_com_dep$part_com_dep <- part_com_dep
+
+
+colnames(nbre_com_dep)[colnames(nbre_com_dep)=="CODE_DEPT"] <- "Code départemental"
+colnames(nbre_com_dep)[colnames(nbre_com_dep)=="part_com_dep"] <- "Part des communes (en %)"
+
+
+ggplot(data=nbre_com_dep, aes(x=`Code départemental`, y=`Part des communes (en %)`)) +
+geom_bar(stat="identity")+
+  
+geom_text(aes(label=part_com_dep), vjust=1.6, color="black",
+            position = position_dodge(0.9), size=3.5)+
+
+ggtitle("Part des communes par département pouvant atteindre une salle de cinéma pour 
+un effort maximal de 15 minutes")
+
+
+```
+
+
+```{r,echo=T, message=FALSE, warning=FALSE, paged.print=FALSE ,fig.cap="Figure 17.2 nombre de salles de cinéma pouvant être atteintes à un effort maximal de 15 minutes depuis les communes.\\label{fig:17.2}"}
+
+
+# nombre d'équipement pouvant etre atteint à 15minutes par commune et département d'appartenance 
+
+colnames(Nbre_ress_15min_com)[colnames(Nbre_ress_15min_com)=="code_dep"] <- " Code départemental"
+colnames(Nbre_ress_15min_com)[colnames(Nbre_ress_15min_com)=="Nbre_voisins_equipes_min"] <- "Nombre de salles de cinéma"
+
+
+ggplot(Nbre_ress_15min_com, aes(x =` Code départemental` , y =`Nombre de salles de cinéma` )) + 
+  geom_boxplot() + 
+  geom_jitter(color = "red", alpha = 0.08)+
+ggtitle("Nombre de salles de cinéma atteignables à un effort maximal de 15 minutes 
+par commune & appartenace départementale")
+
+
+
+```
+
+<div align="justify">
+
+Nous lisons du croisement des deux graphiques affichés dans les figures 17.1 & 17.2 (ci-dessus) qu’il est possible d’atteindre des salles de cinéma à un effort maximal de 15 minutes depuis Paris- tous les arrondissements Parisiens - et toutes les communes des départements limitrophes de la petite couronne. En revanche pour ce même effort maximal de 15 minutes plus de 100 salles de cinéma peuvent être atteinte depuis n’importe quel arrondissement Parisien. Elles ne sont qu’environ 55 salles au maximum qui pourraient être atteinte depuis les communes du département du Val-de-Marne. Nous observons également des deux graphiques que seul deux tiers des communes du département de la Seine-et-Marne pourraient atteindre entre une salle de cinéma au minimum et 23 salles différentes au maximum pour un effort maximal de 15 minutes de trajet par voiture.
+
+</div>
+
+## L’accessibilité comme potentiel des lieux :  entre attractivité et coût de transport  
+
+<div align="justify">
+
+Dans les parties précédentes nous avons cherché à déterminer l’accessibilité en fonction de la distance à une ressource – la plus proche ou la plus éloignée. Ce type de modélisation déterministe simplifie le comportement des déplacements des agents en réduisant leur stratégie de mobilité en un seul et même choix présupposé rationnel - se diriger vers le plus proche. Cependant la réalité est beaucoup plus complexe.
+
+Nous pouvons également mesurer l’accessibilité spatiale en termes de distance « temps de trajets » non pas à une ressource- la plus proche ou la plus éloignée…- mais à un point de référence tel que le point moyen appelé aussi point central pouvant correspondre dans le cas de notre étude au centre de gravité des ressources – salles de cinéma <a href="https://www.dropbox.com/s/mlzj684evw8pw7l/Annexe%204.1.pngàdl=0">Voir annexe 4.1</a> & <a href="https://www.dropbox.com/s/dg3rpsayvoezzhb/Annexe%204.2.pngàdl=0">Annexe 4.2</a>. Il s’agit du point minimisant la somme des distances vers toutes les ressources. 
+Cependant cette méthode est loin d’être la meilleure car nous réduisons la localisation des objets d’étude en une seule localisation arbitraire - peu objective. 
+
+C’est pour cela que nous pensons qu’il est plus approprié d’aborder cette question d’accessibilité spatiale à travers un modèle probabiliste qui cherche à estimer ou à prédire l’accessibilité des lieux en se basant sur l’hypothèse d’interactions spatiale entre les lieux qui dépend à la fois de l’attractivité des lieux « la masse d’opportunités » et de la distance séparant les lieux qui dépend elle-même des réseaux les reliant. 
+ 
+Nous calculons le « Potentiel » ( Stewart, 1973)  des lieux « i » qui correspond à la somme des opportunités dans les lieux « j »  dans le voisinage de « i »  divisé par le carré de la distance séparant le lieu « i » des lieux « j ». 
+L’accessibilité – potentielle - d’un lieu « i » devient alors une variante de la masse d’opportunités dans « les lieux j » et de la distance « dij ». Ainsi, elle sera proportionnelle - croissante- à la masse d’opportunités et inversement proportionnelle à la distance – décroissante avec la distance. La distance elle-même « temps de trajet », varie en fonction de caractéristiques des infrastructures – le réseau - reliant les lieux, de leur efficacité ou de leur congestion. Ainsi, c’est la position des lieux « i » qui fait varier leur accessibilité. 
+
+</div>
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#options(osrm.server = "http://adressse_du_serveur/osrm/", osrm.profile = "driving")
+
+grille <- CreateGrid(w =shp_com_arrang , resolution = 5000, 
+                   returnclass = "sf")
+
+
+matrice_temps_trajet<- osrmTable(src = shp_cine_idf, dst= grille)
+
+
+matrice_temps_trajet<-matrice_temps_trajet$durations
+
+shp_cine_idf <- shp_cine_idf %>% mutate(n=1)
+
+
+# potentiel de stewart (beta =2, portee de la distance = 15 minutes) 
+
+pot_r <- stewart(knownpts = shp_cine_idf, 
+                      unknownpts = grille, 
+                      varname = 'fauteuils', 
+                      matdist = matrice_temps_trajet,
+                      span =15, 
+                      beta = 2, 
+                      typefct = "exponential", 
+                      returnclass = "sf")
+
+
+breaks <-  c(0,100,300,2000,5000,seq(10000,70000,by=20000),max(pot_r$OUTPUT))
+
+
+
+rastPot_r<- rasterStewart(pot_r)
+
+spat_idf <- as_Spatial(st_geometry(shp_com_arrang))
+
+conPot_r<- rasterToContourPoly(r = rastPot_r,
+                                  mask = spat_idf,
+                                  breaks = breaks)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+
+# -----nombre potentiel de population dans un voisinage de 15 minutes de trajet par voiture 
+
+grille <- CreateGrid(w =shp_com_arrang , resolution = 5000, 
+                   returnclass = "sf")
+
+#options(osrm.server = "http://dep-info-...", osrm.profile = "driving")
+
+matrice_temps_trajet <- osrmTable(src = shp_com_arrang, dst= grille)
+
+
+matrice_temps_trajet<-matrice_temps_trajet$durations
+
+shp_com_arrang$pop15_29 <-  as.numeric(shp_com_arrang$pop15_29)
+
+pot_pop <- stewart(knownpts = shp_com_arrang, 
+                      unknownpts = grille, 
+                      varname = 'pop15_29', 
+                      matdist = matrice_temps_trajet,
+                      span =15, 
+                      beta = 2, 
+                      typefct = "exponential", 
+                      returnclass = "sf")
+summary(pot_pop$OUTPUT)
+  
+brks <- c(0,5000,seq(10000,500000,by=100000),max(pot_pop$OUTPUT))
+  
+
+  
+  
+  
+rastPot_pop<- rasterStewart(pot_pop)
+  
+conPot_pop <- rasterToContourPoly(r = rastPot_pop,
+                                 mask = spat_idf,
+                                 breaks = brks)
+
+```
+
+
+
+
+```{r echo=TRUE, fig.cap="Figure", fig.show='hold', message=FALSE, warning=FALSE, paged.print=FALSE}
+#  nombre potentiel de salles de cinema dans un voisinage fonctionnel de 15 minutes ( par voiture)
+
+
+# Cartographie
+
+fdc_osm <- getTiles(shp_com_arrang, crop=TRUE, zoom =9)
+
+col <- carto.pal(pal1 = "turquoise.pal",n1=11, transparency = T)
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+tilesLayer(fdc_osm)
+choroLayer(spdf = conPot_r,
+           df = conPot_r@data,
+           var = "center",
+           breaks = breaks,
+           border = F,
+           legend.title.cex = 0.7,
+           legend.frame = FALSE,
+           legend.pos = "topleft",
+           legend.title.txt = "Nombre potentiel
+de places de cinémas",
+           col = col,
+           legend.horiz =F,
+           legend.border = F,
+           legend.values.rnd = 0,
+           add = T, 
+           colNA ="red" )
+layoutLayer(title = "Nombre potentiel de places de cinéma dans un voisinage de 15 minutes par voiture",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright" ,
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+# ajouter des élementes de contexte 
+
+plot(st_geometry(shp_dep_idf), col=NA, border="#666666", add=T)
+
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+
+# nombre potneiel de population jeune - de 15 à 29 ans - dans un voisinage fonctionnel de 15 minutes 
+
+cols <- carto.pal(pal1 = "orange.pal",n1=9, transparency = T)
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+tilesLayer(fdc_osm)
+choroLayer(spdf = conPot_pop,
+           df = conPot_pop@data,
+           var = "center",
+           breaks = brks,
+           col = cols,
+           border = F,
+           legend.title.cex = 0.7,
+           legend.frame = FALSE,
+           legend.pos = "topleft",
+           legend.title.txt = "Nombre potentiel 
+de jeunes- 15 à 29 ans",
+           legend.horiz =F ,
+           legend.values.rnd = 0,
+           legend.border = F, 
+           add = T )
+
+layoutLayer(title = "Nombre potentiel de jeunes- 15 à 29 ans- dans un voisinage de 15 minutes par voiture",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright" ,
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+plot(st_geometry(shp_dep_idf), col=NA, border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+```
+
+
+<div align="justify">
+
+Si nous constatons des deux cartes de la figure 18 que l’offre est plus au moins adaptée à la demande – à la portée de distance retenue, n’oublions pas non plus que les zones qui laissent apparaître une offre potentielle forte correspondent plus ou moins aux zones pour lesquelles l’offre de proximité que nous avions représentée auparavant était la meilleure, ce qui fait que ces zones bénéficient d’une offre de voisinage abondante et à proximité.
+
+Si notre analyse avait porté sur l’accessibilité aux zones d’emplois, par exemple, il aurait été intéressant de calculer des temps de trajet vers ces zones où l’offre potentielle est la plus abondante. Une implantation pareille des salles de cinéma biologiques (ou de répartition des populations potentielles) est réajustée par une offre de proximité abondante du point de vue du marché : c’est le mieux que puissent faire les salles de cinéma biologiques qui cherchent à maximiser leurs profits. Mais si nous regardons cela du point de vue des acteurs publics, c’est eux qui sont censés ajuster ces inégalités de répartition des ressources et garantir un droit d’accès aux ressources urbaines dont la répartition répond dans pas mal de cas à des logiques de marché.
+
+Afin de vérifier à quel degré l’intervention des pouvoirs publics et les politiques de rééquilibrage territorial sont efficaces, et dans le but de cerner quelles sont les communes les plus avantagées par celles-ci, nous proposons d’étudier dans une sixième partie l’efficacité du réseau routier pour voir dans quelle mesure ce dernier améliore l’accessibilité.
+
+</div>
+
+## L’accessibilité globale des lieux : entre centralité et efficacité d’un réseau de transport
+
+<div align="justify">
+
+Dans cette partie d’analyse nous mesurons l’accessibilité globale de chaque lieu que nous cherchons à rejoindre depuis tous les lieux. Dans le cadre de notre étude il s’agit de mesurer le degré d’accessibilité de chaque commune depuis toutes les autres communes de la zone d’étude. Pour cela, nous calculons l’indice d’accessibilité de Shimbel (1957). En fait, nous construisons une matrice d’adjacence des distances séparant les lieux « i » des lieux « j » et nous calculons pour chaque lieu « j » en colonne, la somme des distances le séparant de tous les lieux « i » que nous divisons ensuite par la somme des distances da la matrice. Ce résultat permet de déterminer le niveau d’accessibilité global de chaque sommet du réseau de communes que nous étudions, et nous permettra d’identifier les sommets du réseau les plus accessibles depuis tous les autres sommets. La formalisation de l’indice nous indique alors que plus l’indice est petit, plus la facilité de se déplacer depuis ou vers ce lieu est grande. En s’inspirant de la méthode de Nadine CATAN et de Claude GRASLAND (1997), reprise par Anne BRETAGNOLLE et al (2010). Nous commençons par calculer et cartographier l’accessibilité globale géométrique (distances à vol d’oiseau) des communes d’ile de France. Ensuite, nous reproduisons le même calcul mais avec des distances réseau (temps en minutes) et dans le but de cerner les impacts du réseau sur l’accessibilité des lieux, nous finissons par calculer « l’efficacité routière » Nadine CATAN et Claude GRASLAND (1997) qui correspond au ratio de l’accessibilité globale géométrique par l’accessibilité globale routière. 
+Nous représentons les deux premiers résultats dans deux cartes que nous affichons  dans les figures (19.1 & 19.2) ci-dessous. 
+
+
+</div>
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#options(osrm.server = "http://dep-info-...", osrm.profile = "driving")
+
+
+# matrice temps de trajet sur reseau 
+mat_com_com <- osrmTable(src =shp_com_arrang, dst = shp_com_arrang, measure = "duration" )
+
+
+mat_com_com_dits <- osrmTable(src =shp_com_arrang, dst = shp_com_arrang, measure = "distance" )
+
+
+# matrice des temps de trajets ---------------------------------+---------
+
+mat_com_com<- mat_com_com$durations
+
+# nommer les lignes et les colonnes de la matrice 
+colnames(mat_com_com) <- shp_com_arrang$INSEE_COM
+row.names(mat_com_com) <- shp_com_arrang$INSEE_COM
+
+
+
+# matrice des distances km  ---------------------------------------------
+
+mat_com_com_dist  <- mat_com_com_dits$distances 
+
+
+
+# transformation en format long 
+mat_long_com_com_dist<- melt(mat_com_com_dist)
+
+# mise en km 
+mat_long_com_com_dist$value<- mat_long_com_com_dist$value/1000 
+
+
+# transformation en matrice d'adjacence OD
+
+mat_com_com_dist <- dcast(data = mat_long_com_com_dist,
+                       formula = Var1~Var2,
+                       value.var = "value") 
+
+
+mat_com_com_dist <- mat_com_com_dist[,-1]
+# nommer les lignes et les colonnes de la matrice 
+colnames(mat_com_com_dist) <- shp_com_arrang$INSEE_COM
+row.names(mat_com_com_dist) <- shp_com_arrang$INSEE_COM
+
+# matrice des distances à vol d'oiseau -----------------------------------
+
+mat_euclidienne <- st_distance(st_centroid(st_geometry(shp_com_arrang)), st_centroid(st_geometry(shp_com_arrang)))
+
+# Indice de shimbel géométrique et réseau --------------------------------
+
+# calcul de l'indice de shimbel avec les distnaces à vol d'oiseau , sur réseau & les temps de trajets par voiture en minutes 
+
+shimbel <- data.frame(id =shp_com_arrang$INSEE_COM, 
+                      Shimbel_dist_temps = sum(mat_com_com) / colSums(mat_com_com),
+                      Shimbel_dist_rese =sum(mat_com_com_dist)/colSums(mat_com_com_dist),
+                      Shimbel_dist_eucli= sum(mat_euclidienne) / colSums(mat_euclidienne))
+                      
+# ajout des calculs au shp ( pour les cartographier ...) 
+shp_com_arrang$shimbel_temps <- shimbel$Shimbel_dist_temps
+shp_com_arrang$shimbel_eucli <- shimbel$Shimbel_dist_eucli
+shp_com_arrang$shimbel_reseau_km <- shimbel$Shimbel_dist_rese
+
+# calcul de la vitesse de circulation moyenne par heure de tous les trajets communes / communes 
+
+# conversion des temps de trajet en heure 
+# transformation en format long 
+mat_long_com_com <- melt(mat_com_com)
+
+
+# mise en km 
+mat_long_com_com$value<- mat_long_com_com$value/60 
+
+
+# transformation en matrice d'adjacence OD
+
+mat_com_com_h <- dcast(data = mat_long_com_com,
+                       formula = Var1~Var2,
+                       value.var = "value")
+
+# nommer les lignes et les colonnes de la matrice 
+colnames(mat_com_com_h) <- shp_com_arrang$INSEE_COM
+row.names(mat_com_com_h) <- shp_com_arrang$INSEE_COM
+
+
+# vitesse (km/h)
+mat_long_com_com$vites_circu <-  mat_long_com_com_dist$value / mat_long_com_com$value
+
+
+vites_circu_com_com<- dcast(data = mat_long_com_com,
+                       formula = Var1~Var2,
+                       value.var = "vites_circu")
+
+
+
+# qvitesse de circulation moyenne ( communes / communes ) --------------------------------
+
+vites_circu_com_com <- vites_circu_com_com[,-1]
+
+vites_circu_com_com[is.na(vites_circu_com_com)] <- 0
+
+rownames(vites_circu_com_com) <- shp_com_arrang$INSEE_COM
+
+vites_circu_com_com_moy <- apply(vites_circu_com_com, 1, sum) / 1300 
+
+vitesse_globale <- colSums(vites_circu_com_com)/sum(vites_circu_com_com) 
+
+
+# ajout des derniers calculs au shp de la carto -------------------------------------------
+
+shp_com_arrang$vit_cicu_moy_com_com <-  vites_circu_com_com_moy
+
+shp_com_arrang$vit_circ_globale <-  vitesse_globale
+
+
+```
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap="Figure 18.1 accessibilité géométrique globale- indice de Shimbel- basée sur les distances euclidiennes \\label{fig:18.1}"}
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+plot(st_geometry(shp_com_arrang), col="grey90")
+
+col = carto.pal("sand.pal", 4)
+
+choroLayer(x=shp_com_arrang,
+           var = 'shimbel_eucli',
+           nclass = 4, 
+           col = col,
+           border=NA,
+           legend.pos = "topright",
+           legend.horiz = T, 
+           legend.border = F,
+           legend.title.txt = "Indice de Shimbel",
+           add=T)
+# layout 
+layoutLayer(title = "Accessibilité euclidienne globale des communes d'Ile de France", 
+            south=T,
+            sources = "GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+```
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap="Figure 18.2 accessibilité routiére globale- indice de Shimbel- basée sur les temps de trajets par voiture en minutes\\label{fig:18.2}"}
+par(mfrow=c(1,1))
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+col = carto.pal("sand.pal", 4)
+# plot vide pour cadrer la carte
+plot(st_geometry(shp_com_arrang), col = NA, border = "grey")
+# plot du fond france
+
+# Index de Shimbel avec les distances euvclidiennes
+choroLayer(x=shp_com_arrang,
+           var = 'shimbel_temps', nclass = 4, 
+           border=NA,
+           legend.pos = "topright",
+           legend.horiz = T, 
+           col = col,
+           legend.border = F,
+           legend.title.txt = "Indice de Shimbel",
+           add=T)
+
+
+# Ajout d'un habillage
+layoutLayer(title = "Accessibilité routiére globale des communes d'Ile de France", 
+            south=T,
+            sources = "GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+```
+
+
+ 
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# Ratio des deux indices de shimbel calculàs auparavant 
+
+shimbel$effecacite <-  shimbel$Shimbel_dist_temps/shimbel$Shimbel_dist_eucli
+
+# ajout du calcul au shp pour pouvoir le cartographier 
+
+shp_com_arrang$efficacite <- shimbel$effecacite
+
+# l'effeicaité du réseau par la vitesse 
+
+shimbel$eff_res_tps <- shimbel$Shimbel_dist_temps/shimbel$Shimbel_dist_rese
+
+shp_com_arrang$efficacite_resau_vit <- shimbel$eff_res_tps
+
+```
+
+<div align="justify">
+Les cartes affichées dans les figures (19.1 & 19.2) ci-dessus présentent respectivement l’accessibilité globale géométrique et l’accessibilité globale routière de l’ensemble des communes de la région Ile-de-France calculées avec l’indice d’accessibilité de Shimbel. L’intérêt de présenter ces deux cartes ensemble est celui de les comparer : si la première carte mesure l’espacement théorique sur un réseau optimal abstrait, la deuxième mesure le même espacement mais sur un réseau fonctionnel et non pas au sens de métrique mais plutôt celui du coût des trajets en termes de temps. Les différences qu’apportent la deuxième carte comparée à la première sont liées à la structure et aux caractéristiques du réseau routier qui font que les temps de trajet varient selon les lieux d’origines desquels nous partons mais aussi selon les lieux de destinations que nous comptons rejoindre. 
+
+Si la première carte ne prend en compte que la séparation spatiale des lieux, qui fait que, les lieux dont la position géographique est centrale sont naturellement les plus accessibles. La deuxième carte inclut l’usage d’un réseau de transport parcouru pour se déplacer d’un lieu vers d’autres lieux que nous cherchons à rejoindre. Ainsi, nous constatons que la carte d’accessibilité routière globale apporte plus de nuances, comparée à la carte d’accessibilité géométrique globale, qui ne nous renseigne que sur le fait que les lieux les plus centraux (centre géographique) sont les plus accessibles. Cela revient à dire que l’accessibilité suit une simple fonction décroissante selon l’éloignement au centre- géométrique. Tandis que, la carte d’accessibilité routière varie en fonction d’un réseau pouvant « Potentiel » assurer des déplacements entre les lieux. 
+
+Pour pouvoir analyser et mieux comparer ces deux premières cartes en termes d’accessibilité, nous calculons le rapport des indices d’accessibilités avec les distances euclidiennes et les temps de trajets par la route en voiture. Nous cartographions ce résultat - et l'affichons dans la figure (19.3) ci-dessous - dans le but de repérer les communes les plus favorisées par le réseau dans la mesure où celui-ci améliore plus leurs accessibilités.
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" figure 19.3 efficacité routiére globale \\label{fig:19.3}"}
+
+
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+
+fdc_osm <- getTiles(shp_com_arrang, crop=TRUE, zoom =9)
+
+tilesLayer(fdc_osm)
+
+choroLayer(x=shp_com_arrang,
+           var = 'efficacite', 
+           breaks = c(0.67,0.8,0.97,1.03,1.10,1.22),
+           col = carto.pal(pal1 = "green.pal",3, 
+                           "wine.pal",2, 
+                           transparency = T),
+           border = NA,
+           lwd = 0.2,
+           legend.horiz =F ,
+           legend.pos = "topleft",
+           legend.title.txt = "Efficacité du réseau",
+           legend.frame = F,
+           legend.border = T, 
+           legend.values.rnd = 2,
+           add=T)
+
+
+
+#
+
+layoutLayer(title = "Efficacité théorique du réseau routier en Ile de France", 
+            south=T,
+            sources = "GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+```
+
+La carte affichée dans la figure (19.3) ci-dessus est une représentation d’un ratio d’accessibilité globale calculée avec les distances euclidiennes par des distances temps (temps de trajet en minutes) calculées sur le réseau routier en utilisant la voiture. La variable visuelle couleur en montant en valeur caractérise les valeurs prises par l’indice de nos quatre classes (discrétisation en classes d’effectifs égaux). Plus la couleur est sombre et plus l’indice est grand et inversement, plus la couleur est claire plus l’indice est faible. 
+Ainsi, plus la valeur de l’indice est grande et plus le réseau favorise et améliore l’accessibilité des communes, car le réseau pour y accéder est le plus efficace. Les communes les plus avantagées par le réseau, dans la mesure où ce dernier améliore l’accessibilité, sont situés dans les secteurs périphériques du nord-ouest, de l’est et du sud-est de la région Ile-de-France. Nous observons également que les communes de la partie centrale situées dans le nord de la première couronne présentent un indice d’efficacité supérieur à 1 traduisant une amélioration de leur accessibilité, en raison d’un réseau routier efficace. Comme nous lisons de la carte que les franges périphériques au centre et à l’est de la partie nord du département du Val-D’oise et les franges périphériques au sud du département de l’Essonne, ne bénéficient pas d’une amélioration de l’accessibilité, en raison d’un réseau routier moins efficace. Une situation problématique compte tenu de leur éloignement global des autres communes de la région. 
+
+En comparant les deux cartes d’accessibilité globale géométrique et routière, nous constatons que les communes en question perdent en termes d’accessibilités alors qu’on devrait observer une situation inverse - selon le principe d’équité au sens de Jhon Rawls. Le réseau étant censé réajuster l’inégale accessibilité des lieux en favorisant les lieux qui dans une situation de départ étaient naturellement les moins accessibles « désenclavement à».  
+
+
+Par une telle analyse nous nous intéressons qu’à l’analyse d’un réseau pour déterminer l’accessibilité globale des lieux. La localisation des ressources est complétement ignorée. Pour la prendre en compte nous calculons l’indice de centralité d’éloignement maximal (konig, ) qui correspond pour chaque lieu à l’éloignement maximal vers tous les lieux- le plus éloigné. Dans notre cas d’étude cela revient à calculer pour chacune des communes la salle de cinéma la plus éloignée en termes de temps de trajet. La cartographie du résultat est affichée dans les  <a href="https://www.dropbox.com/sh/t6qdqh935et4wz1/AADOpfEr-N7UXwdjogkrCIpoaàdl=0"> annexes 5.1 & 5.2 </a>. Par la même méthode, il est également possible d’inverser l’approche pour déterminer les salles de cinéma les plus centrales – les plus accessibles. Plus cet indice - éloignement maximal- est grand et moins un lieu est central et donc moins accessible depuis tous les lieux. Ainsi, l’accessibilité d’un lieu dépend de la centralité de sa position quant à la ressource la plus éloignée – centralité d’éloignement maximal. 
+
+Ce ratio mesure l’efficacité du réseau routier par rapport à un réseau optimal théorique ou chaque lieu est accessible de n’importe quel autre lieu par une liaison à vol d’oiseau. Pour une meilleure prise en compte du réseau et de la vitesse de circulation sur celui-ci il est également intéressant de calculer le ratio d’efficacité du réseau en divisant l’accessibilité globale calculée à base des temps de trajets par l’accessibilité globale routière en termes de métriques- distances kilométriques. L’accessibilité globale d'un lieu devient alors une variante de la position relative d’éloignement/de proximité quant à l'ensemble des autres lieux et de la vitesse de circulation moyenne vers chacun des lieux. Dans le but de simplification de la relation et sa modélisation, nous avons décidé d'étudier la variabilité de l'accessibilité globale calculée à base des temps de trajets en fonction de l'éloignement/proximité globale sur le réseau mesuré à base des métriques kilométriques des plus-courts chemins sur le réseau routiers en interaction avec la moyenne des vitesses de circulation moyennes vers toutes les communes depuis chacune des communes. Nous présentons les résultats sous formes de deux cartes et un résumé du modèle étudié que nous affichons dans la figure 20. 
+
+</div>
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" figure 20.1 efficacité du réseau routier \\label{fig:20.1}"}
+# ------------------- effciacité du réseau et vitesse de circulation---------------------------
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+
+tilesLayer(fdc_osm)
+
+choroLayer(x=shp_com_arrang,
+           var = 'efficacite_resau_vit', 
+           breaks = c(0.7,0.8,0.98,1.02,1.10,1.20),
+           col = carto.pal(pal1 = "green.pal",3, 
+                           "wine.pal",2, 
+                           transparency = T),
+           border = NA,
+           lwd = 0.2,
+           legend.horiz =F ,
+           legend.pos = "topleft",
+           legend.title.txt = "Efficacité routiére",
+           legend.frame = F,
+           legend.border = T, 
+           legend.values.rnd = 2,
+           add=T)
+
+
+
+#
+
+layoutLayer(title = "Efficacité réelle du réseau routier en Ile de France", 
+            south=T,
+            sources = "GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+
+```
+
+
+```{r echo=T, fig.cap=" figure 20.2 vitesse de circulation globale moyenne ( communes / communes) en Ile de France", message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+# vitesse de cicrculation moyenne de chacunne des commune svers toutes les commune---------
+
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+tilesLayer(fdc_osm)
+
+choroLayer(x=shp_com_arrang,
+           var = 'vit_cicu_moy_com_com',
+           method = "quantile",
+           nclass = 6,
+           col = carto.pal(pal1 = "green.pal",n1=7,
+                           transparency = T,
+                           middle = T),
+           border = NA,
+           lwd = 0.2,
+           legend.horiz =F ,
+           legend.pos = "topleft",
+           legend.title.txt = "Vitesse de circulation 
+moyenne (km/h)",
+           legend.frame = F,
+           legend.border = F, 
+           legend.values.rnd = 0,
+           add=T)
+
+
+layoutLayer(title = " Vitesse de circulation globale moyenne ( communes / communes) en Ile de France", 
+            south=T,
+            sources = "GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# ------temps de trajet par l'éloignement global et la moyenne des citesses moyennes de circulation vers toutes les communes ----
+
+mod_3 <-lm (formula= shimbel_temps ~ shimbel_reseau_km : vit_cicu_moy_com_com , data = shp_com_arrang)
+
+
+summary(mod_3)
+
+```
+
+<div align="justify">
+
+Nous voyons bien que la carte affichée dans la figure 19.1 apporte plus de nuances que la carte de la figure 18.3 en termes d’efficacité du réseau. Cela s’explique à la fois par les différences en termes de longueurs des tronçons routiers et la vitesse de circulation moyenne qui varie d'un déplacement à un autre- d'un tronçon à un autre. Nous observons de la carte de la figure 19.2 une corrélation positive quasiment parfaite entre la moyenne de la vitesse de circulation moyenne et l’efficacité du réseau routier représentée dans la figure 19.1. En fait, plus la moyenne des vitesses de circulation moyennes vers les communes est grande et plus le réseau est efficace - ce qui est logique et évident. 
+Le résumé du modèle de la régression multivariée affiché ci-dessus nous indique que si nous connaissons la longueur en km de tous les tronçons routiers – les plus courts chemins- et que nous avons calculé l’indice d’accessibilité de Shimbel relatif à ces derniers et que nous connaissons également la moyenne de la vitesse de circulation moyenne vers toutes les communes nous pouvons estimer à près de 99% l’accessibilité globale d’une commune depuis les autres commune en termes de temps de trajet.
+
+Cependant, il est plus intéressant et judicieux de mesurer l’accessibilité d’un lieu par rapport à l’ensemble des ressources que nous étudions – définition de l’accessibilité. Pour cela nous reproduisons le calcul de l’indice de shimbel pour mesurer cette fois-ci l’accessibilité globale géométrique et routière entre les communes et l’ensemble des salles de cinémas. La cartographie de ces deux mesures et de leur ratio nous permet de savoir quelles sont les communes les plus avantagés par le réseau dans la mesure ou il améliore leur accessibilité aux salles de cinéma par rapport à une situation théorique – espacement géométrique. Le résultat est affiché en annexes 6.1, 6.2 & 6.3 <a href="https://www.dropbox.com/sh/iju5f1yc8bzvocs/AADXz5PmFVYAO-D8ZC5YqOCNaàdl=0">voir les annexes</a>. 
+
+</div>
+
+## L’accessibilité et la congestion d’un réseau de transport 
+
+<div align="justify">
+
+Jusqu’ici nous avons abordés le réseau comme étant des routes fantômes réservées à la seule circulation de chaque individu sans aucune prise en compte du fait que plusieurs individus peuvent circuler au même temp, et se retrouver ainsi, en situation de concurrence pour rejoindre les lieux d’intérêt qu’ils cherchent à atteindre – Paracerque ils y vont à la même destination ou dans la même direction…etc.- ce qui fait que leurs chemins se croisent. 
+
+ En réalité, c’est cela qui donne lieu aux problèmes de congestion routière, appelés communément « les bouchons ». Cette congestion routière implique des prolongements des temps de parcours, qui peuvent varier, selon le lieu du quel nous partons et du lieu que nous cherchons à rejoindre. Dans le but d’analyser spatialement- territorialement- l’intensité de ces effets de congestion du réseau, lié à son usage, et qui se concrétisent par des prolongements de temps de parcours nous optons pour la méthode suivante : 
+ 
+-	Comme la congestion dépend à la fois de la période de la journée à laquelle le déplacement se réalise et des lieux desquels nous partons et de ceux vers lesquels nous nous dirigeons. Nous avons décidé de créer deux matrices d’adjacence (communes / communes). Les deux matrices correspondent aux temps de trajet, par voiture, en minutes séparant les communes les unes des autres. En heures creuses pour la première, et en heures de pointes pour la deuxième. 
+
+-	Nous calculons ensuite pour chaque origine « commune » qui forment les lignes de nos deux matrices construites ; la somme des distances vers toutes les destinations « les communes » qui correspondent quant à elles aux colonnes. Le résultat correspond à la somme des temps de trajet, en heures creuses et heures de pointe, depuis chacune des communes vers toutes les communes. 
+
+-	Par la suite, nous calculons le différentiel en termes de temps « prolongement global des temps de parcours » que nous obtenons en calculant la différence entre la somme des trajets en heures de pointe et celle calculée en heures creuses. Pour obtenir un prolongement global moyen des temps de parcours en minutes. Nous divisons « prolongement global des temps de parcours » par le nombre de destination qui n’est rien d’autres que la moyenne. 
+Nous affichons dans la carte ci-dessous, le résultat de ce calcul. 
+
+Pour avoir plus de détails sur la base de donnée des temps de trajets avec une prise en compte de la congestion - que nous utiliserons dans cette partie- nous vous renvoyons vers les deux liens ( ci-dessous) accessible en ligne - des quels vous pourez à votre tour télécharger la BDD, comme il vous est également possible de consulter le papier source faisant l'objet d'une publication...
+
+**Matrices temps de parcours VP/TP, HP/HC :**
+Buczkowska, Sabina; Coulombel, Nicolas; de Lapparent, Matthieu, 2018, "The Paris region travel times and distances dataset", https://doi.org/10.7910/DVN/E85DBD, Harvard Dataverse, V1 
+
+https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/E85DBD
+
+**Papier source :**
+
+https://link.springer.com/article/10.1007%2Fs11067-018-9439-5
+
+
+</div>
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+trajet_com_idf <- read.table("DATA/IdF_TravelTimeDistances (2).txt", sep = ",", header = T)
+
+
+# selection des collones qui nous interesse du tableau "trajet_com_idf"
+trajet_com_idf_mph <- trajet_com_idf %>% select(Insee_Ori, Insee_Dest,TravelTimeCar_MPH )
+trajet_com_idf_oph <- trajet_com_idf %>% select(Insee_Ori, Insee_Dest, TravelTimeCar_OPH)
+
+# contruction de deux matrices de temps de trajt  en heures creuses et en heures de pointe (communes / communes ) en idf 
+
+# heures de pointe -----------------------------
+
+com_idf_mph <- dcast(trajet_com_idf_mph,
+                     formula =Insee_Ori~Insee_Dest, 
+                     value.var ="TravelTimeCar_MPH")
+
+com_idf_mph <- as.matrix(com_idf_mph)
+
+com_idf_mph <- com_idf_mph[,-1]
+
+# heures creuses ------------------------------
+
+
+com_idf_oph <-  dcast(trajet_com_idf_oph,
+                     formula =Insee_Ori~Insee_Dest, 
+                     value.var ="TravelTimeCar_OPH")
+
+com_idf_oph <- as.matrix(com_idf_oph)
+
+com_idf_oph <- com_idf_oph[,-1]
+
+# construction d'une matrice matrice des distances - communes/ communes- à vol d'oiseau 
+
+mat_euclidienne <- st_distance(st_centroid(st_geometry(shp_com_arrang)), st_centroid(st_geometry(shp_com_arrang)))
+
+# calcul de l'indice de shimbel avec les distnaces à vol d'oiseau et les temps de trajets par voiture en minutes 
+
+
+shimbel <- data.frame(id =shp_com_arrang$INSEE_COM, 
+                      Shimbelmph = sum(com_idf_mph) / colSums(com_idf_mph),
+                      Shimbeloph = sum(com_idf_oph) / colSums(com_idf_oph),
+                      ShimbelEuclid = sum(mat_euclidienne) / colSums(mat_euclidienne))
+
+com_idf_oph <- apply(com_idf_oph,1,sum)
+
+com_idf_mph <- apply(com_idf_mph,1,sum)
+
+
+# prolongement global moyen des temps de parcours en minutes -------------------------
+
+prolong_moy_parc_min <- (com_idf_mph-com_idf_oph)/nrow(shp_com_arrang)
+
+# ajout des resultats au shp de cartographie -----------------------------------------
+
+shp_com_arrang$shimbel_mph <- shimbel$Shimbelmph
+shp_com_arrang$shimbel_oph <- shimbel$Shimbeloph
+shp_com_arrang$prolong_moy_parc_min <- prolong_moy_parc_min
+
+```
+
+
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" Figure 21 prolongement global moyen des temps de parcours sur un réseau routier congestionné \\label{fig:21}"}
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+fdc_osm <- getTiles(shp_com_arrang, crop=TRUE, zoom =9)
+
+tilesLayer(fdc_osm)
+choroLayer(x=shp_com_arrang,
+           var = 'prolong_moy_parc_min',
+           method = "quantile",
+           nclass = 5,
+           col = carto.pal(pal1 = "orange.pal",n1=6,
+                           transparency = T,
+                           middle = T),
+           border = NA,
+           lwd = 0.2,
+           legend.horiz =F ,
+           legend.pos = "topleft",
+           legend.title.txt = "Prolongement global 
+des parcours (en min)",
+           legend.frame = F,
+           legend.border = F, 
+           legend.values.rnd = 0,
+           add=T)
+
+
+layoutLayer(title = " Prolongement global moyen des temps de parcours sur un réseau congestionné en Ile de France", 
+            south=T,
+            sources = "GEOFLA (IGN 2015), https://dataverse.harvard.edu/ ,\nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+```
+ 
+<div align="justify">
+
+La carte de la figure 21-ci-dessus-représente le prolongement global des temps de parcours, dû à la congestion routière, entre les communes de la région d’ile de France. Nous utilisons la variable visuelle couleur dans sa caractéristique valeur. En fait, plus la couleur est forte « sombre », et plus le prolongement de temps en minutes est grand. Inversement, plus la couleur est claire, et plus elle renvoie à un prolongement moyen des temps de parcours moindre. 
+En ce sens, nous repérons clairement de la carte que les communes les plus impactées – de +16 à +23 minutes - sont au Nord-Ouest de la région. Elles correspondent quasiment à toutes les communes du département du Val-D’oise et les communes du nord des Yvelines qui laisse apparaitre un gradient Nord-Sud. 
+
+</div>
+
+
+
+# <font color=#2ca25f>Conclusion</font>
+<div align="justify"> 
+
+Ce travail s’inscrit dans un contexte de forte demande d’analyse cartographique de l’accessibilité à des aménités urbaines, par des réseaux de transport.
+La démarche que nous avons suivie est purement quantitative. Elle visait à répondre à cette demande d’analyse de l’accessibilité en nous basant sur différentes mesures d’éloignement ou de proximité entre les lieux de demande (des communes) et les lieux d’offres (communes équipées en ressource) à deux niveaux géographiques : celui des communes et celui des ressources en question (les localisations de salles de cinéma). Plusieurs scénarios d’accessibilité ont été étudiés en fonction de la distance considérée (métrique euclidienne, voisinage, métrique réseau …) en kilomètres ou en distance / temps en minutes.
+
+Nous retenons des résultats que nous avons obtenus que chacun des scénarios mis en oeuvre présente des avantages et des limites, dans la mesure où chaque résultat correspond à une modélisation de la réalité, ce qui sous-entend une simplification de cette réalité qui peut sembler parfois contestable.
+
+Les résultats du calcul de différentes accessibilités et la cartographie des différentes métriques nous renseignent tous sur l’éloignement ou la proximité à des salles de cinéma, en Position relative par rapport à des lieux d’intérêts (l’offre) qu’on cherche à rejoindre depuis les lieux de la demande. Les analyses conduites n’abordaient pas toutes, l’espace de la même manière : si d’une part, l’espace était considéré soit comme étant continu et navigable dans tous les sens depuis un point (un lieu) à un autre (métrique euclidienne). D’une autre part, l’espace a été abordé en prenant en compte de la dimension de voisinage censée nous renseigner sur la proximité des lieux. L’espace est alors transformé en un graphe navigable d’un sommet (a) à un sommet (b), à condition que (b) soit directement le voisin de (a). Dans ce cas, l’éloignement consiste à compter le nombre (k) de frontières communales à traverser pour rejoindre une commune équipée. Cette méthode reste très intéressante dans la mesure où l’on peut la reproduire en se basant sur différents nombres de voisins à franchir (k=2, k=3, k=4…). Cela peut nous informer sur la présence ou l’absence de ressources dans un voisinage plus ou moins proche.
+
+L’analyse de l’accessibilité sur réseau semble être la partie de l’analyse qui répond le mieux aux attentes du stage, en termes d’analyse et de rendu cartographique. A noter que le calcul et la cartographie des temps de trajets sont le résultat le plus pertinent que nous avons eu. Les métriques réseau en kilomètres que nous avons calculé nous apportent plus de précisions sur l’éloignement des lieux comparés à ce que nous avons obtenu avec les autres. Néanmoins, celles-ci ne mesurent que la longueur des tronçons, ce qui suppose que le réseau routier est homogène et navigable de la même manière quel qu’en soit le point de départ et le point de destination, alors que ce n’est pas le cas en réalité. Les temps de trajets quant à eux prennent en compte les caractéristiques des chemins à parcourir dans la mesure où la vitesse de circulation diffère selon le type de routes empruntée. La modélisation du réseau OpenStreetMap que nous avons utilisé prend en compte ce paramétrage des vitesses. Elle nous a permis de calculer des temps de trajet en minutes par la route et en voiture. En revanche, ces mêmes données openStreetMap ne prennent pas en considération la congestion ce qui fait que les temps de trajets que nous avons calculés ne varient pas en fonction des périodes de la journée pendant lesquelles la fréquence ou l’afflux du trafic routier ne sont pas les mêmes.
+
+L’accessibilité globale (indice de Shimbel, 1953) et l’efficacité routière que nous avons calculés et cartographiés dans l’application (3) de notre travail nous renseignent à la fois sur l’espacement séparant les lieux les uns des autres et sur la mesure dans laquelle le réseau contribue à les rapprocher en les reliant au mieux. La lecture des cartes par la méthode proposée par Claude GRASLAND et Nadine CATAN (1997) permet d’identifier les zones bénéficiant d’une meilleure efficacité routière globale (entre toutes les communes de la zone d’étude) qu’on peut qualifier de communes ayant gagné le plus en termes d’accessibilité sur réseau routier avec usage de la voiture.
+
+Si nous comptons aller plus loin dans cette analyse quantitative de l’analyse de l’accessibilité spatiale aux aménités urbaines, nous pensons tout de même qu’une analyse qualitative des mobilités (des enquêtes ou des entretiens) serait à mener en parallèle. Elle pourrait apporter plus de nuances et d’informations réelles contrairement aux modélisations de la réalité que nous proposons, dans la mesure où une approche qualitative peut révéler des logiques de déplacement particulières selon plusieurs caractéristiques des populations concernées (liens sociaux, culture…).
+
+En prenant un peu de recul sur nos résultats et sur ce que nous prévoyons de faire à l’avenir, nous pensons qu’une approche mixte (quantitative / qualitative) correspond au choix optimal, si l’on veut réellement cerner cette question de l’accessibilité.
+
+</div>
+
+
+# <font color=#2ca25f>Bibliographie </font>
+
+<div align="justify">
+Bretagnolle A., Giraud T. et Verdier N., (2010), <i>Modéliser l'efficacité d'un réseau</i>, Espace Géographique, éditions Belin, 2010, 2/10, pp.117-131. halshs-00504320  https://halshs.archives-ouvertes.fr/halshs-00504320 
+
+Bret, B., (2009), <i>Pour une géographie du juste. Lire les territoires à la lumiére de la philosophie morale de John Rawls</i>, Presses universitaires de Paris Nanterre ,278 p. 
+
+Bahoken F., (2016), <i>Contribution à la cartographie d'une matrice de flux</i>, Univ.Paris Diderot, réalisée sous la direction de Grasland C. et Zanin C.,510 p. https://halshs.archives-ouvertes.fr/tel-01273776/document
+
+Bahoken F., (2014), <i>L'intérêt du raisonnement logique dans l'analyse cartographique des flux L'exemple de migrations interne</i>, Revue internationale de la géomatique, 250 p. 
+
+Beauguitte L., Buard E., Commenges H., Cura R., Le Nechet F., Le Texier M., Mathian H., Rey-Coyrehourcq S., (2014), <i>R et espace. Traitement de l'information géographique</i>, Framabook, 278 p. 
+
+Giraud T., Pecout H., Ysebaert R., (2019) ,<i>Accessibilité et données OpenStreetMap sur R : exemple pratique sur les maternités de la Nièvre et de la Seine-Saint-Denis</i>, Séminaire CIST de juin 2019- atelier calculs d’accessibilités avec des donnés en libre accès. 
+http://cist.cnrs.fr/accessibilite-spatiale-aux-soins-eclairages-theoriques-et-methodologiques/ 
+
+Hilal M.,(2003) ,<i>Accessibilité aux emplois en France : le rôle de la distance à la ville</i>, Cybergeo, 6ème rencontres de ThéoQuant, Besançon, article 293. : http://cybergeo.revues.org/index2790.html 
+
+Mercier A., (2008), <i>Accessibilité et évaluation des politiques de transport en milieu urbain : le cas du tramway strasbourgeois</i>, Univ.Lyon2, Sous la direction de Yves Crozet M., 304 p.: https://tel.archives-ouvertes.fr/tel-00354832
+
+Pumain D., (2009),<i> Essai sur la distance et l’espace géographique<i>, ATALA n° 12, « La distance, objet géographique », 2009, 17 p. 
+https://www.lycee-chateaubriand.fr/revue-atala/2009/10/23/atala-n12-la-distance-objet-geographique-2009/
+
+Viana Cerqueira E-V., (2018), <i>Les inégalités d’accès aux ressources urbaines dans les franges périurbaines de Lille et Belo Horizonte (Brésil)</i>, Univ.Paris1 et Univ.Minas-Gerais, sous la direction de Le Goix R. et De Mendoça G., 460 p. 
+https://tel.archives-ouvertes.fr/tel-02148194
+
+
+#  <font color=#2ca25f>Blogs et turtoriels visités</font>
+
+"R-atique ", blog de Lise Vaudor 
+ http://perso.enslyon.fr/lise.vaudor/ 
+
+ Site de Julien Barnier 
+ http://alea.fr.eu.org 
+
+"R bloggers"  
+https://www.r-bloggers.com/
+
+"Le blog d'Element-R" 
+https://elementr.hypotheses.org/ 
+
+"R géomatique", blog de Timothée Giraud
+ https://rgeomatic.hypotheses.org
+
+"NEOCARTO "Blog de Nicolas lambert 
+https://neocarto.hypotheses.org/nicolas-lambert
+
+Tutoriel de cartographie de Nicolas Lambert et Ronan Ysebaert 
+https://riatelab.github.io/anfdataviz/      
+
+Tutoriel <i>« Du point à la surface: interpolation et interaction spatiale »</i> de Commenges H. et Giraud.T 
+http://rug.mnhn.fr/semin-r/PDF/semin-R_interpolation-interaction-spatiale_HCommenges-TGiraud_100616 
+
+ 
+</div> 
+
+
+# <font color=#2ca25f>Annexes</font>
+ 
+**Annexe 1 graph de voisinage de (k=1)**
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" Annexe 1 graph de voisinage de (k=1) contiguité\\label{fig:A 1}"}
+# visulaiser le graph de voisinage 
+par(mfrow=c(1,1))
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
+
+plot(fdc, col="black", border=NA)
+legend("topleft","Commune (sommet)",cex=.8,col="yellow",pch=19,box.lty=0,box.col=NA)
+legend("topright","Lien (arête)          ",cex= .8,col="red",lty=1, box.lty = 0,box.col = NA)
+#legend("topleft","Centroides des communes", col= "yellow",pch=19, cex=0.8, box.lty = 0, box.col = NA)
+trace<-segments(contig_1$X1, contig_1$Y1, contig_1$X2, contig_1$Y2,col="red", cex=0.4)
+plot(st_centroid(st_geometry(shp_com_arrang)),add=T, col="yellow", pch=19, cex=0.2)
+# layout 
+layoutLayer(title = "Graphe de voisinage de k=1 contiguïté",
+            tabtitle = FALSE,
+            sources ="GEOFLA (IGN 2015)" ,
+            author = "Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+            frame = T,theme = "black.pal",
+            south = TRUE)
+```
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+edgesList <- contig_1[c("i", "j", "Dij","X1","Y1","X2","Y2")]
+
+adjMat <- dcast(data = edgesList,
+                formula = i ~ j,
+                value.var = "Dij")
+
+adjMat <-  adjMat[,-1]
+
+                      
+# transformation en obket graph
+g <- graph.data.frame(edgesList)
+
+den <- graph.density(g)
+
+deg <- degree(g)
+
+bet <- betweenness(g)
+
+
+
+dij <- contig_1$Dij
+
+
+# caclul du plus court chemin sur le graph le poid de chaque lien correspond à la valeur de la distance de l'arc
+dista<- distances(g, v = V(g), to = V(g), mode = c("all", "out", "in"),
+                  weights = dij, algorithm = c("automatic", "unweighted","dijkstra", "bellman-ford", "johnson"))
+
+
+# transformation en format long 
+dista <- melt(dista)
+dista <- as.data.frame(dista)
+
+
+
+
+# preparation pour jointure ( pour ne garder que les communes equipàees en ressources ) 
+com_avec <- shp_com_avec_r[,1:2]
+
+# jointure pour ne garder comme destinations que les communes equipàes de ressources (salle de cinema dans notre cas d'àtude)
+dista_terri <- merge(com_avec, dista, by.x="INSEE_COM", by.y="Var2")
+
+
+dista_terri <- as.data.frame(dista_terri)
+
+
+# transformation en matruce d'adjacence de distances sur reseau 
+adjMat_terri <- dcast(data = dista_terri,
+                      formula = Var1~INSEE_COM,
+                      value.var = "value")
+
+
+
+# distance minimum 
+
+dist_terri_ppcomar <-  apply (adjMat_terri,1,min)
+summary(dist_terri_ppcomar)
+
+# distance moyenne 
+
+dist_terri_comar_moy <- apply(adjMat_terri,1,mean)
+
+# distance maximum (eloignement maximum)
+dist_terri_comar_max <- apply(adjMat_terri,1,mean)
+
+
+# ajout des calculs des distances au shp de cartographie 
+
+shp_com_arrang$dist_terri_min <- dist_terri_ppcomar
+
+shp_com_arrang$dist_terri_max <- dist_terri_comar_max
+
+shp_com_arrang$dis_terri_moy <- dist_terri_comar_moy 
+
+```
+
+**Annexe 2 métrique territoriale au plus-proche voisin équipé**
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap=" Annexe 2 métrique territoriale au plus-proche voisin équipé \\label{fig:A 2}"}
+
+cols <- carto.pal(pal1 = "turquoise.pal", n1 = 10)# choix d'une palette de couleur (nombre de classe =10)
+par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")# Ajuster les marges
+
+plot(st_geometry(shp_com), col = NA)
+
+legend("topright",c("Communes équipées            ") , col= c("red"),pch=19,cex=0.8, box.lty = 0, box.col = NA)
+
+
+choroLayer(x = shp_com_arrang, 
+           var = "dist_terri_min",
+           method ="quantile",
+           nclass = 10,
+           col = cols,
+           border = NA,
+           add = TRUE,
+           legend.pos = "topleft",
+           legend.title.txt = "Distance territoriale
+(en km)",
+           legend.values.rnd = 0, 
+           legend.horiz = F, 
+           legend.border = F,
+           legend.frame = F)
+
+layoutLayer(title = "Distance territoriale à la commune équipée la plus proche",
+            tabtitle = FALSE,
+            sources ="http://data.iledefrance.fr,GEOFLA (IGN 2015)" ,
+            author = " © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019",
+            frame = T,theme = "black.pal",
+            south = TRUE)
+plot(st_centroid( shp_com_avec_r$geometry), col="red", add=T, border=NA, pch=19,cex=0.5)
+plot(shp_dep_idf$geometry, border="#666666", add=T)
+
+
+```
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# connexion a un serveur distannt 
+#options(osrm.server = "http://adresse_du_serveur/osrm/", osrm.profile = "driving")
+# calcul d'une matrice temps de trajets" ( communes / salles de cinéma )
+plus_proche <- osrmTable(src =shp_com_arrang, dst = shp_cine_idf, measure = "duration" )
+
+
+# pour ne garder que les temps de trajet ( ce qui nous interesse)
+
+plus_proche<- plus_proche$durations
+
+# transformation en matrice 
+adjMat_idf <- as.matrix(plus_proche)
+
+# Ajout d'une colonne id au df des ressources ( les salles de cinéma)
+shp_cine_idf <- shp_cine_idf %>% mutate(id=1: nrow(shp_cine_idf))
+
+# Nommer les lignes et les colonnes de la matrice 
+colnames(adjMat_idf) <- shp_cine_idf$id
+row.names(adjMat_idf) <- shp_com_arrang$INSEE_COM
+
+
+# transformation de la matrice en format long 
+mat_long_idf<- melt(adjMat_idf)
+
+
+# Nomemr les colonnes 
+colnames(mat_long_idf) <- c("O","D","distance temps en mn ")
+
+
+# transformation en matrice d'adjacence OD
+
+adjMat_reseau  <- dcast(data = mat_long_idf,
+                       formula = O~D,
+                       value.var = "distance temps en mn ") 
+
+
+
+# pour les arranger [ ordre croissant - du plus proche au plus eloigne ]
+
+dist_temps_scd_min <- apply(adjMat_reseau, 1, sort)
+
+# définir la deuxieme salle de cinema la plus proche de chacune des communes 
+dist_temps_scd_min <- dist_temps_scd_min[2,]
+
+# calculer un différentiel des temps de parcours ( prolongement en minutes )
+
+prol_parc_min <-  as.numeric(dist_temps_scd_min-dist_temps_reseau_ppcomar)
+
+# ajout des resultats au sho de la cartographie 
+
+shp_com_arrang$distance_temps_scd_min <-  dist_temps_scd_min
+
+shp_com_arrang$prol_parc_min <- prol_parc_min
+
+```
+
+**Annexe 3 temps de trajet au deuxiéme plus-proche**
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" Annexe 3 temps de trajet au deuxiéme plus-proche \\label{fig: A 3}"}
+
+cols <- carto.pal(pal1 = "sand.pal", n1 = 10)
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+plot(st_geometry(shp_com_arrang), border = "grey50", col="grey95")
+
+# Ajouter les élements de légende 
+
+legend("topright"," Tronçons routiers         ", col="white",lty=1,cex=0.8,box.lty = 0,box.col = NA)
+
+legend("top", "  Salle de cinéma", col ="#2ca25f",cex = .8,pch = 19,box.col = NA, box.lty = 0 )
+
+# temps de trajet 
+
+choroLayer(x = shp_com_arrang, 
+           var="distance_temps_scd_min", 
+           method = "quantile", 
+           nclass = 10,
+           col = cols,
+           border = NA, 
+           legend.frame=FALSE,
+           legend.pos = "topleft",
+           legend.horiz = F,
+           legend.border = F,
+           legend.title.txt = "Temps de trajet en (min) ",add=TRUE)
+
+# layput 
+layoutLayer(title = "Temps de trajet à la deuxiéme salle de cinéma la plus proche",
+            tabtitle = FALSE,
+            sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright",
+            frame = TRUE,theme = "black.pal",
+            south = TRUE)
+
+plot(shp_dep_idf$geometry, add=T, border="#666666", col=NA)
+plot(shp_reg_idf$geometry, add=T)
+plot(shp_cine_idf$geometry, add=T, col="#2ca25f", pch=19, cex=0.6)
+
+
+mtext(" © Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#options(osrm.server = "http://adresse_du_serveur/osrm/", osrm.profile = "driving")
+
+# matrice temps de trajet sur reseau 
+mat_com_com <- osrmTable(src =shp_com_arrang, dst = shp_cine_idf, measure = "duration" )
+
+# Pour ne garder que les temps de trajets ( ce qui nous interesse) 
+mat_com_com<- mat_com_com$durations
+
+# nommer les lignes et les colonnes de la matrice 
+colnames(mat_com_com) <- shp_cine_idf$id
+row.names(mat_com_com) <- shp_com_arrang$INSEE_COM
+
+# matrice des distances à vol d'oiseau 
+mat_euclidienne <- st_distance(st_centroid(st_geometry(shp_com_arrang)), st_geometry(shp_cine_idf))
+
+
+# indice de shimbel ( temps de trajets / distance à vol d'oiseau)  
+
+Shimbel_dist_temps = sum(mat_com_com) / rowSums(mat_com_com) 
+Shimbel_dist_eucli= sum(mat_euclidienne) / rowSums(mat_euclidienne)
+
+# ajout des calculs au shp ( pour les cartographier ...) 
+shp_com_arrang$shimbel_tps <- Shimbel_dist_temps
+shp_com_arrang$shimbel_eucli <- Shimbel_dist_eucli
+
+
+```
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+#options(osrm.server = "http://adresse_du_serveur/osrm/", osrm.profile = "driving")
+
+# calculer le centre de gravité des ressources
+union_cine <- st_union(shp_data_cine)
+
+poly_cine <- st_convex_hull(union_cine)
+
+# extraction des cordonées du centre 
+
+
+centr_poly_cine <-  st_centroid(poly_cine)
+centr <- st_transform(centr_poly_cine, 4326)
+centr <- st_coordinates(centr)
+
+centr <- data.frame(id="dst", x =centr[,1], y = centr[,2])
+
+# recuperation des courbes isochronnes - définies par des classes de temps de trajets - autour du centre de gravité des ressources. 
+
+iso_ctr_gvt <- osrmIsochrone(loc=c(x = centr[,2], y = centr[,3]), returnclass = "sf", 
+                     breaks = seq(0,60,5), res = 100)
+
+
+
+```
+
+**Annexe 4 accessibilité du point central - centre de gravité des salles de cinéma**
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" Annexe 4.1 accessibilité isochrone du centre de gravité des ressources \\label{fig:A 4.1}"}
+
+
+shp_dep_idf <- st_transform(shp_dep_idf, st_crs(fdc_osm))
+centr_poly_cine <-  st_transform(centr_poly_cine, st_crs(fdc_osm))
+
+osm_isoch <- getTiles(shp_com_arrang, crop=TRUE, zoom =9)
+
+iso_ctr_gravi <- st_transform(iso_ctr_gvt, st_crs(osm_isoch))
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")#
+cols <- carto.pal(pal1 = "sand.pal", n1 = 6, transparency = T)
+tilesLayer(osm_isoch)
+legend("topleft","Centre de gravité" , col= "red",pch=19,cex=0.8, box.lty = 0, box.col = NA)
+
+
+choroLayer(iso_ctr_gravi, var="center", border = NA,
+           col = cols, 
+           breaks = seq(0,60,10), add=T, legend.pos = "topright",
+           legend.frame = F, legend.horiz = T,
+           legend.title.txt = "Temps de trajet (en mn)",
+           legend.border = T)
+
+
+layoutLayer(title = "Temps de trajet en minutes par voiture au centre de gravité des salles de cinéma",
+            tabtitle = FALSE,
+            sources = "\nc OpenStreetMap contributors. www.openstreetmap.org/copyright,
+http://data.iledefrance.fr,GEOFLA (IGN 2015)",
+            frame = T,theme = "black.pal",
+            south = TRUE)
+
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)#limites regionales
+plot(centr_poly_cine,add=T, col="red", pch=19)# limites departementales # localisation des ressources 
+
+
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#options(osrm.server = "http://adresse_du_serveur/osrm/", osrm.profile = "driving")
+
+# nous stockons dans un data fram les coordonnees geographique du centre de gravite calcule auparavant 
+centr_df <- data.frame(id="dst", x = centr$x, y = centr$y)
+centr_sf <- st_as_sf(centr_df, coords = c('x','y'), crs = 4326)
+centr_sf <- st_transform(centr_sf, 2154)
+
+centr_buff <- st_buffer(x = centr_sf, dist = 100000)# définir une portee autour du point central 
+
+# creation d'une grille d'un pas de 100 km  
+
+grid <- st_sf(geometry = st_make_grid(x = centr_buff, n = c(30,30), 
+                                      what = "centers", 
+                                      square = FALSE))
+
+grid <- grid[centr_buff,]
+
+# recuperer les routes reliant les origines à la destiination [ points de la grille vers le centre de gravite des ressources ]
+list <- vector(mode = "list", length = nrow(grid))
+for (i in seq_len(nrow(grid))){
+  list[[i]] <- osrmRoute(
+    src = grid[i,],
+    dst = centr_sf,
+    returnclass = "sf",
+    overview = "full"
+  )
+}
+routes <- do.call(rbind,list)
+
+# transformer les routes de lignes en polygonnes en creant un buffer de 200 m autour des routes 
+routes <- routes[order(routes$duration, decreasing = T),]
+routes <- st_buffer(routes, dist = 200)
+
+
+```
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap="4.2 temps de trajet au centre de gravité des ressources  \\label{fig: A 4.2}"}
+cols <- carto.pal(pal1 = "red.pal", n1 = 6)
+par(mar =c(0.5,0.5,1.5,0.5) , bg = "black")
+
+choroLayer(x = routes, var = "duration", border = NA, 
+           col =cols, 
+           breaks = seq(0,122,20), legend.pos = "topleft",
+           legend.frame = TRUE, legend.horiz = F,
+           legend.title.txt = "Temps de trajet
+(en mn)", 
+  legend.border = NA)
+
+layoutLayer(title = "Temps d'accés en minutes par voiture au centre de gravité des salles de cinéma",
+            tabtitle = FALSE,
+            frame = T,theme = "grey.pal",
+            south = TRUE)
+
+
+
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7, col = "white")
+mtext(text ="http://data.iledefrance.fr,GEOFLA (IGN 2015),\nc OpenStreetMap contributors. www.openstreetmap.org/copyright" , side = 1, line = -1, adj = 0.02, cex = 0.6, col = "white")
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+ 
+mat_eucli_com_ress <- st_distance(st_centroid(st_geometry(shp_com_arrang)),st_geometry(shp_cine_idf))
+
+max_dist_com_ress <- apply(mat_eucli_com_ress,1,max)
+
+
+tps_trajet_com_ress<- osrmTable(src = shp_com_arrang,dst =  shp_cine_idf,measure = "duration")
+
+tps_trajet_com_ress <- tps_trajet_com_ress$durations
+
+max_tps_trajet_com_ress <- apply(tps_trajet_com_ress,1,max)
+
+ratio_reseau_eucli <-  max_tps_trajet_com_ress/max_dist_com_ress 
+
+
+shp_com_arrang$konig_eucli <- max_dist_com_ress
+
+shp_com_arrang$konig_res <- max_tps_trajet_com_ress
+  
+shp_com_arrang$ratio_centr <- ratio_reseau_eucli
+  
+```
+
+**Annexe 5 indice de centralité d'éloignement maximal (konig) (éloignement maximal géométrique & réseau)**
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,fig.show='hold',fig.cap=" Annexe 5 Indice de centralité d'éloignement maximal (konig) (éloignement maximal géométrique & réseau)\\label{fig: A 5}"}
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+plot(st_geometry(shp_com_arrang), col="grey90")
+
+col = carto.pal("sand.pal", 4)
+
+choroLayer(x=shp_com_arrang,
+           var = 'konig_eucli',
+           nclass = 4, 
+           col = col,
+           border=NA,
+           legend.pos = "topright",
+           legend.horiz = T, 
+           legend.border = F,
+           legend.title.txt = "Indice de Shimbel",
+           add=T)
+# layout 
+layoutLayer(title = "Centralité d'éloignement géométrique maximal  ", 
+            south=T,
+            sources = "http://data.iledefrance.fr,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+plot(st_geometry(shp_com_arrang), col="grey90")
+
+col = carto.pal("sand.pal", 4)
+
+choroLayer(x=shp_com_arrang,
+           var = 'konig_res',
+           nclass = 4, 
+           col = col,
+           border=NA,
+           legend.pos = "topright",
+           legend.horiz = T, 
+           legend.border = F,
+           legend.title.txt = "Indice decentralité 
+d'éloignement maximum (Konig)",
+           add=T)
+# layout 
+layoutLayer(title = "Cecntralité d'éloignement maximal sur réseau", 
+            south=T,
+            sources = "http://data.iledefrance.fr, GEOFLA (IGN 2015),\nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+```
+
+
+**Annexe 6 accessibilité globale- indice de Shimbel- aux salles de cinéma et efficacité du réseau routier reliant les communes aux salles de cinéma**
+
+
+```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,fig.show='hold',fig.cap=" Annexe 6 accessibilité globale- indice de Shimbel- aux salles de cinéma et efficacité du réseau routier reliant les communes aux salles de cinéma\\label{fig: A 6}"}
+par(mfrow=c(1,1))
+par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
+
+col = carto.pal("sand.pal", 4)
+
+plot(st_geometry(shp_com_arrang), col = NA, border = "grey")# plot du fond france
+
+# Indic de Shimbel avec les distances euvclidiennes
+choroLayer(x=shp_com_arrang,
+           var = 'shimbel_tps', nclass = 4, 
+           border=NA,
+           legend.pos = "topright",
+           legend.horiz = T, 
+           col = col,
+           legend.border = F,
+           legend.title.txt = "Indice de Shimbel",
+           add=T)
+
+
+
+# Ajout d'un habillage
+layoutLayer(title = "Accessibilité routiére globale (communes / salles de cinéma)", 
+            south=T,
+            sources = "http://data.iledefrance.fr, GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+
+
+plot(st_geometry(shp_com_arrang), col = NA, border = "grey")
+
+
+# Indice de Shimbel avec les distances euvclidiennes
+choroLayer(x=shp_com_arrang,
+           var = 'shimbel_eucli', nclass = 4, 
+           border=NA,
+           legend.pos = "topright",
+           legend.horiz = T, 
+           col = col,
+           legend.border = F,
+           legend.title.txt = "Indice de Shimbel",
+           add=T)
+
+
+
+# Ajout d'un habillage
+layoutLayer(title = "Accessibilité géométrique globale (communes / salles de cinéma)", 
+            south=T,
+            sources = "http://data.iledefrance.fr, ,GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+
+shp_com_arrang$eff <-  shp_com_arrang$shimbel_tps/shp_com_arrang$shimbel_eucli
+
+
+
+tilesLayer(fdc_osm)
+choroLayer(x=shp_com_arrang,
+           var = 'eff', 
+           breaks =c( 0.49, 0.9, 0.97, 1.03,1.10,1.39),
+           col = carto.pal(pal1 = "blue.pal",2, 
+                           "red.pal",3, 
+                           transparency = T, 
+                           middle = T),
+           border = NA,
+           lwd = 0.2,
+           legend.horiz =T ,
+           legend.pos = "topright",
+           legend.title.txt = "Efficacité routiére",
+           legend.frame = F,
+           legend.border = T, 
+           legend.values.rnd = 2,
+           add=T)
+
+layoutLayer(title = "Efficacité du réseau routier reliant les communes aux salles de cinéma en Ile de France", 
+            south=T,
+            sources = "http://data.iledefrance.fr, GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
+plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
+
+
+
+
+
+
+```
+
+<div align="justify"><strong>**Pour citer le travil:**</strong></div>
+<div align="justify">Ramdane.Y, 2019, <i> Analyse cartographique de l'accessibilité spatiale aux aménités urbaines</i>, IFSTTAR / Univ.Paris1, sous la direction de Françoise BAHOKEN (IFSTTAR/AME) & Clarisse DIDELON-LOISEAU. (Univ.Paris1)
+</div>
+
+
+
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=FALSE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+
+
+
+
+
+
