@@ -25,16 +25,14 @@ knitr::opts_chunk$set(warning = FALSE)
 
 ```
 
-```{r include=FALSE}
-options(osrm.server = "http://195.220.198.189/osrm/", osrm.profile = "driving")
-```
+
 
 
 ![](C:/Users/Ridon/Desktop/Analyse accessibilité aux préfectures régionales, Ramdane YAHIATENE 2019/Billet_distance_et_temps_d_accés/page de garde.png)
 
 
 
-                                             Réalisation & encadrement     
+                                                  Réalisation / Direction & encadrement     
       
 Réalisé par : <a ahref="https://www.linkedin.com/in/ramdane-yahiatene-1105/">Ramdane YAHIATENE </a> 
                

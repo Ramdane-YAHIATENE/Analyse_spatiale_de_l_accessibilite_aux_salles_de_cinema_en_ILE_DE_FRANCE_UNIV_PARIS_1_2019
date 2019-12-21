@@ -1,3 +1,4 @@
+
 # Analyse_spatiale_de_l_accessibilite_geographique_aux_salles_de_cinema_en_Ile_de_France_Univ_Paris_1.
 Ce travail a été réalisé dans le cadre de la formation master 2 Géoprimse  à l'université Paris 1 Panthéon Sorbonne et reprend ou s'inspire en grande partie de mon mémoire de stage réalisé dans le cadre du Master 1 Géographie à Paris 1 Panthéon Sorbonne , effectué à l'IFSTTAR  du 01/04/2019 au 30/08/2019 - sous la direction et l'encadrement de Clarisse DIDELON-LOISEAU  &amp; Françoise BAHOKEN 
 
