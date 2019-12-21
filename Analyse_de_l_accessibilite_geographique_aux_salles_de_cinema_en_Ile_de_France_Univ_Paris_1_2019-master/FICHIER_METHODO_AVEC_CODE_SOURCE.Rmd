@@ -150,6 +150,19 @@ La démarche que nous avons suivie est purement quantitative. Elle visait à ré
 
 <a href="https://www.dropbox.com/sh/13ri2blssfh1ecl/AADFwM0GS8HpQRN94fZ7DXJ6aàdl=0">**Vous pouvez les télécharger ici** </a>
 
+Sources : 
+
+Données sur les ressources : LES SALLES DE CINEMA 
+https://www.data.gouv.fr/fr/datasets/les-salles-de-cinema-en-ile-de-france-idf/
+
+Données sur la structure de la population : POPULATION PAR AGE / INSEE 
+https://www.insee.fr/fr/statistiques/2044702
+
+Les données géographiques sont facilement accessibles faudrait juste taper Géofla IGN découpage administratif – communes / Régions... etc.( Dans le cas de notre étude nous avions utilisé le découpage administratif en commune de 2015) Pour le cas du réseau routier ; tapez par exemple Géofla routes 500 
+
+https://www.data.gouv.fr/fr/datasets/geofla-r/
+
+
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 #  charger les communes de la France métropolitaine 
 
@@ -175,7 +188,7 @@ shp_reg_idf <- shp_com %>% group_by(CODE_REG) %>% summarise(nbre=n())
 
 shp_dep_idf <- shp_com %>% group_by(CODE_DEPT) %>% summarise(nbre=n())
 
-# shp objets d'étude " les bibliothéques & médiathéques"
+# shp objets d'étude " les salles de cinéma "
 
 shp_cine_idf <- st_read(dsn="DATA/shp_cinÃ©ma_idf/les_salles_de_cinemas_en_ile-de-france.shp")
 
@@ -546,7 +559,7 @@ contPot_r_10<- rasterToContourPoly(r = rastPot_r_10,
 ```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 4 représentation continue de la densité du nombre potentiel de salles de cinéma à différentes portées de distance \\label{fig:4}"}
 # cartographie 
 
-# dans un voisinage spatia - théroqiue- de 5km ( distance à  vol d'oiseau)
+# dans un voisinage spatial - théorique de 5km ( distance à  vol d'oiseau)
 
 par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
 
@@ -581,7 +594,7 @@ plot(shp_reg_idf$geometry, add=T, col=NA)
 plot(shp_dep_idf$geometry, add=T,col=NA, border="#666666")
 
 
-# dans un voisinage théorqiue  de 10 km 
+# dans un voisinage théorique  de 10 km 
 
 par(mar = c(0.5,0.5,1.5,0.5),bg="lightgrey")
 
@@ -629,7 +642,7 @@ Nous avons décidé de représenter dans une même carte les distances kilométr
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 
-# Construction d'une matruce de distance (communes/ressources)
+# Construction d'une matrice de distance (communes/ressources)
 
 
 shp_com_ressource <-  shp_com_arrang
@@ -656,11 +669,11 @@ minDista<- apply(dist_com_r, 1, min, na.rm=T)
 # distance moyenne aux ressources 
 mean_dist <- apply(dist_com_r, 1,mean)
 
-# éloignement maximum ( ressource la plus loin )
+# éloignement maximal( ressource la plus loin )
 maxDista <- apply(dist_com_r,1,max,na.rm=T)
 
 
-# ajout de collonnes (eloignement_minimum/eloignement_maximal/ eloignement_moyen)  au shp de cartographie 
+# ajout de collonnes (eloignement_minimal/eloignement_maximal/ eloignement_moyen)  au shp de cartographie 
 
 
 shp_com_ressource$short_dist_r <- minDista
@@ -694,7 +707,7 @@ union_r<- st_union(shp_r_geom)
 
 hull2 <- st_convex_hull(union_r)
 
-# intersection de la surfacepolygonale occuppee par les salles de cinema  avec la surface de la zone d'étude 
+# intersection de la surface polygonale occuppee par les salles de cinema  avec la surface de la zone d'étude 
 idf_r<- st_intersection(union_idf,union_r)
 
 # délimitation des polygones ( Aires d'influences théoriques)
@@ -795,7 +808,8 @@ point_plus_proche_com$centr <- st_centroid(st_geometry(shp_com_arrang))
 # selection des colonnes qui nous interesse 
 point_plus_proche_com<-  point_plus_proche_com %>% select(point_plus_proche_com, centr)
 
-# jointure pour recuperer la geometrie des points les plus proches de chaque commune ( jusqu'ici on n'avait que leur numero de ligne dans le tableau)
+# jointure pour recuperer la geometrie des points les plus proches de chaque commune ( jusqu'ici on n'avait que leur numero de ligne dans 
+#le tableau)
 geom_point_plus_proche_com <- merge(point_plus_proche_com, shp_r_com, by.x = "point_plus_proche_com", 
                                     by.y = "id.1")
 
@@ -1162,7 +1176,7 @@ shp_com_arrang$nbre_min_front <- nbre_front_terri_ppcomar
 
 
 ```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE, fig.cap="Figure 8  distance topologique à la commune équipée la plus-proche \\label{fig:8}"}
-cols <- carto.pal(pal1 = "red.pal", n1 = 4)# choix d'une palette de couleur (nombre de classe =10)
+cols <- carto.pal(pal1 = "red.pal", n1 = 4)# choix d'une palette de couleur (nombre de classe =4)
 par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")# Ajuster les marges
 
 plot(st_geometry(shp_com), col = NA)
@@ -1342,7 +1356,7 @@ mat_long_idf <- mat_long_idf %>% mutate(Aij= nombre_de_f.1/(`distance temps en m
 
 #  transformation en matrice d'adjacence 
 
-a_ij <- acast(mat_long_idf,O~D,value.var = "Aij")
+a_ij <- dcast(mat_long_idf,O~D,value.var = "Aij")
 
 # determiner l'attraction maximale 
 
@@ -1427,7 +1441,7 @@ shp_com_cine <- merge(shp_cine_idf, shp_com_df, by.x="id", by="plus_proche_cine"
 #  identification du cinéma le plus proche de chaque commune 
 shp_com_arrang$plus_proche <- apply(plus_proche_cine, 1, min) 
 
-# ràcupàration des troncons routiers correspondtas aux chemins les plus courts vers les salles de cinema les plus proches 
+# recuperation des tronçons routiers correspondants aux chemins les plus courts vers les salles de cinema les plus proches 
 
 plus_courts_chemins <- list()
 for (i in seq_len(nrow(shp_com_arrang))){
@@ -1545,7 +1559,7 @@ Il est également possible de faire varier la couleur des tronçons (montée en 
 </div>
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
-# filtrer les tronàons routiers et les communes en focntion des temps de trajets les sàparants des ressources 
+# filtrer les tronçons routiers et les communes en focntion des temps de trajets les sàparants des ressources 
 
 # 5 minutes 
 route_5minutes <- troncons_routiers %>% filter(duration<5)
@@ -1727,7 +1741,7 @@ mod_vit_circ_tps_trjt <-lm (formula= dist_temps~ vites_circu , data = shp_com_in
 
 
 
-#  aevc l' interactions entre les distances et vitesse de circulation moyennee------------
+#  avec l' interaction entre les distances et vitesse de circulation moyennee------------
 
 mod_vit_circ_dist_km_tps_trjt <-lm (formula= dist_temps~ dist_km + vites_circu , data = shp_com_inf)
 
@@ -1830,14 +1844,14 @@ Pour représenter la part de communes et/ou la part de populations communales qu
 plus_proche <- osrmTable(src =shp_com_arrang, dst = shp_cine_idf, measure = "duration" )
 
 
-# pour ne garder que les temps de trajet ( ce qui nous interesse)
+# pour ne garder que les temps de trajet ( ce qui nous interesse :) ) 
 
 plus_proche <- plus_proche$durations
 
 # transformation en matrice 
 adjMat_idf <- as.matrix(plus_proche)
 
-# Ajout d'une colonne id au df des ressources ( salles de cinéma biologiques)
+# Ajout d'une colonne id au df des ressources ( salles de cinéma )
 shp_data_cine <- shp_cine_idf %>% mutate(id=1:nrow(shp_cine_idf))
 
 # Nommer les lignes et les colonnes de la matrice 
@@ -2328,7 +2342,8 @@ conPot_pop <- rasterToContourPoly(r = rastPot_pop,
 
 
 ```{r echo=TRUE, fig.cap="Figure", fig.show='hold', message=FALSE, warning=FALSE, paged.print=FALSE}
-#  nombre potentiel de salles de cinema dans un voisinage fonctionnel de 15 minutes ( par voiture)
+
+#  nombre potentiel de places de salles de cinema dans un voisinage fonctionnel de 15 minutes ( par voiture)
 
 
 # Cartographie
@@ -2553,6 +2568,7 @@ plot(st_geometry(shp_com_arrang), col="grey90")
 
 col = carto.pal("sand.pal", 4)
 
+# indice shimbel avec les distances euclidiennes 
 choroLayer(x=shp_com_arrang,
            var = 'shimbel_eucli',
            nclass = 4, 
@@ -2578,11 +2594,12 @@ par(mfrow=c(1,1))
 par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
 
 col = carto.pal("sand.pal", 4)
-# plot vide pour cadrer la carte
+
+# plot du fdc 
 plot(st_geometry(shp_com_arrang), col = NA, border = "grey")
 # plot du fond france
 
-# Index de Shimbel avec les distances euvclidiennes
+# Indice  de Shimbel avec les tps de trajets 
 choroLayer(x=shp_com_arrang,
            var = 'shimbel_temps', nclass = 4, 
            border=NA,
@@ -2681,6 +2698,7 @@ Ce ratio mesure l’efficacité du réseau routier par rapport à un réseau opt
 </div>
 
 ```{r echo=T, message=FALSE, warning=FALSE, paged.print=FALSE,  fig.cap=" figure 20.1 efficacité du réseau routier \\label{fig:20.1}"}
+
 # ------------------- effciacité du réseau et vitesse de circulation---------------------------
 
 par(mar = c(0.5,0.5,1.5,0.5), bg="lightgrey")
@@ -2752,9 +2770,11 @@ layoutLayer(title = " Vitesse de circulation globale moyenne ( communes / commun
             sources = "GEOFLA (IGN 2015), \nc OpenStreetMap contributors. www.openstreetmap.org/copyright")
 plot(shp_dep_idf$geometry, col=NA,border="#666666", add=T)
 mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
 # ------temps de trajet par l'éloignement global et la moyenne des citesses moyennes de circulation vers toutes les communes ----
 
 mod_3 <-lm (formula= shimbel_temps ~ shimbel_reseau_km : vit_cicu_moy_com_com , data = shp_com_arrang)
@@ -2804,10 +2824,13 @@ https://link.springer.com/article/10.1007%2Fs11067-018-9439-5
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 
+# charger la matrice avec différents tps de trajets à différentes périodes de la journée 
+
 trajet_com_idf <- read.table("DATA/IdF_TravelTimeDistances (2).txt", sep = ",", header = T)
 
 
 # selection des collones qui nous interesse du tableau "trajet_com_idf"
+
 trajet_com_idf_mph <- trajet_com_idf %>% select(Insee_Ori, Insee_Dest,TravelTimeCar_MPH )
 trajet_com_idf_oph <- trajet_com_idf %>% select(Insee_Ori, Insee_Dest, TravelTimeCar_OPH)
 
@@ -3327,8 +3350,8 @@ http://data.iledefrance.fr,GEOFLA (IGN 2015)",
             frame = T,theme = "black.pal",
             south = TRUE)
 
-mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)#limites regionales
-plot(centr_poly_cine,add=T, col="red", pch=19)# limites departementales # localisation des ressources 
+mtext("Ramdane YAHIATENE,IFSTTAR / Univ-Paris1, 2019", side = 4, line=-1,cex = 0.7)
+plot(centr_poly_cine,add=T, col="red", pch=19)
 
 
 ```
@@ -3345,7 +3368,7 @@ centr_sf <- st_transform(centr_sf, 2154)
 
 centr_buff <- st_buffer(x = centr_sf, dist = 100000)# définir une portee autour du point central 
 
-# creation d'une grille d'un pas de 100 km  
+# creation d'une grille 
 
 grid <- st_sf(geometry = st_make_grid(x = centr_buff, n = c(30,30), 
                                       what = "centers", 
@@ -3484,7 +3507,7 @@ col = carto.pal("sand.pal", 4)
 
 plot(st_geometry(shp_com_arrang), col = NA, border = "grey")# plot du fond france
 
-# Indic de Shimbel avec les distances euvclidiennes
+# Indic de Shimbel avec les temps de trajets 
 choroLayer(x=shp_com_arrang,
            var = 'shimbel_tps', nclass = 4, 
            border=NA,
