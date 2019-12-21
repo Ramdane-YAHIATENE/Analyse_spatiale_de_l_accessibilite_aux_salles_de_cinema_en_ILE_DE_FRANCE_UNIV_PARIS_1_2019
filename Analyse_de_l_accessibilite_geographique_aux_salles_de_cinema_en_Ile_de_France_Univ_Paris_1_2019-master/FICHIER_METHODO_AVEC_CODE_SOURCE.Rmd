@@ -32,7 +32,7 @@ knitr::opts_chunk$set(warning = FALSE)
 
 
 
-                                                  Réalisation / Direction & encadrement     
+                                                 Réalisation / Direction & encadrement     
       
 Réalisé par : <a ahref="https://www.linkedin.com/in/ramdane-yahiatene-1105/">Ramdane YAHIATENE </a> 
                
@@ -42,7 +42,7 @@ Directrice académique : <a href="http://www.parisgeo .cnrs.fr/spip.phpàarticle
 Encadrante de stage : <a href="http://www.parisgeo.cnrs.fr/spip.phpàarticle17&lang=fr">Françoise BAHOKEN (U. Paris-Est / IFSTTAR, AME-SPLOTT)</a>  
 
                
-                                         		 Présentation du stage 
+                                         	      Présentation du stage 
                          
 <div align="justify">
 
@@ -156,7 +156,7 @@ https://www.data.gouv.fr/fr/datasets/les-salles-de-cinema-en-ile-de-france-idf/
 Données sur la structure de la population : POPULATION PAR AGE / INSEE 
 https://www.insee.fr/fr/statistiques/2044702
 
-Les données géographiques sont facilement accessibles faudrait juste taper Géofla IGN découpage administratif – communes / Régions... etc.( Dans le cas de notre étude nous avions utilisé le découpage administratif en commune de 2015) Pour le cas du réseau routier ; tapez par exemple Géofla routes 500 
+Les données géographiques sont facilement accessibles faudrait juste taper Géofla IGN découpage administratif – communes / Régions... etc.( Dans le cas de notre étude nous avions utilisé le découpage administratif en communes de 2015) Pour le cas du réseau routier ; tapez par exemple GEOFLA routes 500 
 
 https://www.data.gouv.fr/fr/datasets/geofla-r/
 
@@ -1225,10 +1225,7 @@ Néanmoins, cette analyse reste pertinente dans la mesure où elle aborde l’es
 Nous étudions dans un premier temps, les temps de trajet séparant les communes des salles de cinéma qui leurs sont les plus proches. Dans un second temps, nous abordons en se basant sur une approche isochrone, les aires communales et/ou populations communales atteignables à « x » distance temps « effort-temps » autour des salles de cinéma. 
 </div>
 
-```{r include=FALSE}
-options(osrm.server = "http://195.220.198.189/osrm/", osrm.profile = "driving")
-options(osrm.server = "http://195.220.198.189/osrm/", osrm.profile = "driving")
-```
+
 
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
